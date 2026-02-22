@@ -3,46 +3,67 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
-<title>SRH Tutor — SPLA031</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<title>SPLA Tutor</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <style>
   :root {
-    --rose:    #c0394b;
-    --rose-lt: #e8536a;
-    --rose-dk: #8f1f2e;
-    --cream:   #fdf6f0;
-    --sand:    #f0e6d8;
-    --sand-dk: #d4c4b0;
-    --ink:     #1a1218;
-    --ink-lt:  #4a3a42;
-    --muted:   #8a7a82;
-    --white:   #ffffff;
-    --radius:  16px;
-    --shadow:  0 8px 32px rgba(26,18,24,0.12);
+    --srh:       #c0394b;
+    --srh-lt:    #e8536a;
+    --srh-dk:    #8f1f2e;
+    --cdl:       #1a6b5c;
+    --cdl-lt:    #2a9d84;
+    --cdl-dk:    #0f4a3f;
+    --cream:     #f8f5f0;
+    --sand:      #ede8e0;
+    --sand-dk:   #cdc4b8;
+    --ink:       #1c1714;
+    --ink-lt:    #4a3f38;
+    --muted:     #8a7e76;
+    --white:     #ffffff;
+    --radius:    16px;
+    --shadow:    0 8px 32px rgba(28,23,20,0.12);
+
+    /* Active module colours — defaults to SRH */
+    --mod:       var(--srh);
+    --mod-lt:    var(--srh-lt);
+    --mod-dk:    var(--srh-dk);
   }
+
+  body.cdl-mode {
+    --mod:    var(--cdl);
+    --mod-lt: var(--cdl-lt);
+    --mod-dk: var(--cdl-dk);
+  }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     background: var(--cream);
     color: var(--ink);
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background 0.3s;
   }
 
-  /* ── Background pattern ── */
   body::before {
     content: '';
     position: fixed; inset: 0;
     background:
-      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(192,57,75,0.08) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 90% 100%, rgba(192,57,75,0.06) 0%, transparent 60%);
+      radial-gradient(ellipse 80% 50% at 15% -5%,  rgba(192,57,75,0.07)  0%, transparent 55%),
+      radial-gradient(ellipse 60% 40% at 90% 100%, rgba(26,107,92,0.06)  0%, transparent 55%);
     pointer-events: none; z-index: 0;
+    transition: all 0.4s;
+  }
+  body.cdl-mode::before {
+    background:
+      radial-gradient(ellipse 80% 50% at 15% -5%,  rgba(26,107,92,0.08)  0%, transparent 55%),
+      radial-gradient(ellipse 60% 40% at 90% 100%, rgba(42,157,132,0.06) 0%, transparent 55%);
   }
 
-  /* ════════════════════════════
-     AUTH SCREEN
-  ════════════════════════════ */
+  /* ══════════════════════════════
+     AUTH
+  ══════════════════════════════ */
   #auth-screen {
     position: relative; z-index: 1;
     min-height: 100vh;
@@ -51,27 +72,22 @@
     padding: 24px 20px;
   }
 
-  .brand {
-    text-align: center; margin-bottom: 36px;
-  }
+  .brand { text-align: center; margin-bottom: 32px; }
   .brand-icon {
-    width: 64px; height: 64px;
-    background: linear-gradient(135deg, var(--rose), var(--rose-dk));
-    border-radius: 20px;
+    width: 68px; height: 68px;
+    background: linear-gradient(135deg, var(--srh-lt), var(--srh-dk));
+    border-radius: 22px;
     display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 16px;
-    box-shadow: 0 12px 28px rgba(192,57,75,0.35);
-    font-size: 28px;
+    margin: 0 auto 14px;
+    box-shadow: 0 12px 28px rgba(192,57,75,0.32);
+    font-size: 30px;
   }
   .brand h1 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2rem; color: var(--ink);
-    letter-spacing: -0.5px;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.9rem; color: var(--ink);
+    letter-spacing: -0.3px;
   }
-  .brand p {
-    font-size: 0.85rem; color: var(--muted);
-    font-weight: 300; margin-top: 4px;
-  }
+  .brand p { font-size: 0.83rem; color: var(--muted); font-weight: 300; margin-top: 4px; }
 
   .auth-card {
     background: var(--white);
@@ -92,14 +108,14 @@
     flex: 1; padding: 10px;
     border: none; background: transparent;
     border-radius: 9px; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     font-size: 0.875rem; font-weight: 500;
     color: var(--muted); transition: all 0.2s;
   }
   .tab-btn.active {
     background: var(--white);
-    color: var(--rose);
-    box-shadow: 0 2px 8px rgba(26,18,24,0.1);
+    color: var(--srh);
+    box-shadow: 0 2px 8px rgba(28,23,20,0.1);
   }
 
   .auth-form { display: flex; flex-direction: column; gap: 16px; }
@@ -107,7 +123,7 @@
 
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field label {
-    font-size: 0.8rem; font-weight: 600;
+    font-size: 0.78rem; font-weight: 600;
     color: var(--ink-lt); letter-spacing: 0.5px;
     text-transform: uppercase;
   }
@@ -115,76 +131,114 @@
     padding: 13px 16px;
     border: 1.5px solid var(--sand-dk);
     border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     font-size: 0.95rem; color: var(--ink);
     background: var(--cream);
     outline: none; transition: border-color 0.2s;
     -webkit-appearance: none;
   }
-  .field input:focus { border-color: var(--rose); background: var(--white); }
+  .field input:focus { border-color: var(--srh); background: var(--white); }
   .field input::placeholder { color: var(--sand-dk); }
 
   .btn-primary {
     padding: 15px;
-    background: linear-gradient(135deg, var(--rose-lt), var(--rose-dk));
+    background: linear-gradient(135deg, var(--srh-lt), var(--srh-dk));
     color: var(--white);
     border: none; border-radius: 12px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     font-size: 1rem; font-weight: 600;
     cursor: pointer; margin-top: 4px;
-    box-shadow: 0 6px 20px rgba(192,57,75,0.3);
-    transition: all 0.2s; letter-spacing: 0.2px;
+    box-shadow: 0 6px 20px rgba(192,57,75,0.28);
+    transition: all 0.2s;
   }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(192,57,75,0.4); }
+  .btn-primary:hover { transform: translateY(-1px); }
   .btn-primary:active { transform: translateY(0); }
   .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
   .auth-error {
     background: #fef0f0; border: 1px solid #fca5a5;
     color: #b91c1c; border-radius: 10px;
-    padding: 12px 14px; font-size: 0.875rem;
-    display: none;
+    padding: 12px 14px; font-size: 0.875rem; display: none;
   }
   .auth-success {
     background: #f0fdf4; border: 1px solid #86efac;
     color: #166534; border-radius: 10px;
-    padding: 12px 14px; font-size: 0.875rem;
-    display: none;
+    padding: 12px 14px; font-size: 0.875rem; display: none;
   }
 
-  /* ════════════════════════════
+  /* ══════════════════════════════
+     MODULE SELECTOR
+  ══════════════════════════════ */
+  .module-selector {
+    display: flex; gap: 10px;
+    padding: 12px 16px;
+    background: var(--white);
+    border-bottom: 1px solid var(--sand);
+    overflow-x: auto;
+  }
+  .module-selector::-webkit-scrollbar { display: none; }
+
+  .mod-pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 16px;
+    border-radius: 100px;
+    border: 2px solid var(--sand-dk);
+    background: var(--cream);
+    cursor: pointer;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem; font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .mod-pill.active-srh {
+    background: linear-gradient(135deg, var(--srh-lt), var(--srh-dk));
+    border-color: transparent; color: white;
+    box-shadow: 0 4px 14px rgba(192,57,75,0.3);
+  }
+  .mod-pill.active-cdl {
+    background: linear-gradient(135deg, var(--cdl-lt), var(--cdl-dk));
+    border-color: transparent; color: white;
+    box-shadow: 0 4px 14px rgba(26,107,92,0.3);
+  }
+  .mod-pill span.dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor; opacity: 0.7;
+    display: inline-block;
+  }
+
+  /* ══════════════════════════════
      CHAT SCREEN
-  ════════════════════════════ */
+  ══════════════════════════════ */
   #chat-screen {
     display: none; flex-direction: column;
     height: 100vh; position: relative; z-index: 1;
   }
 
-  /* Top bar */
   .topbar {
     background: var(--white);
     border-bottom: 1px solid var(--sand);
-    padding: 14px 20px;
+    padding: 12px 20px;
     display: flex; align-items: center; gap: 12px;
     position: sticky; top: 0; z-index: 10;
-    box-shadow: 0 2px 12px rgba(26,18,24,0.06);
+    box-shadow: 0 2px 12px rgba(28,23,20,0.06);
   }
   .topbar-icon {
     width: 40px; height: 40px;
-    background: linear-gradient(135deg, var(--rose), var(--rose-dk));
+    background: linear-gradient(135deg, var(--mod-lt), var(--mod-dk));
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; flex-shrink: 0;
+    transition: background 0.3s;
   }
   .topbar-info { flex: 1; min-width: 0; }
   .topbar-info h2 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.05rem; color: var(--ink);
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem; color: var(--ink);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .topbar-info span {
-    font-size: 0.75rem; color: var(--muted); font-weight: 400;
-  }
+  .topbar-info span { font-size: 0.73rem; color: var(--muted); font-weight: 400; }
   .topbar-actions { display: flex; gap: 8px; }
   .icon-btn {
     width: 36px; height: 36px;
@@ -192,10 +246,10 @@
     background: var(--cream);
     border-radius: 10px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; color: var(--muted);
+    font-size: 15px; color: var(--muted);
     transition: all 0.18s;
   }
-  .icon-btn:hover { border-color: var(--rose); color: var(--rose); background: var(--white); }
+  .icon-btn:hover { border-color: var(--mod); color: var(--mod); background: var(--white); }
 
   /* Messages */
   #messages {
@@ -207,19 +261,23 @@
 
   /* Quick commands */
   .quick-commands {
-    display: flex; gap: 8px; flex-wrap: wrap;
-    padding: 0 16px 12px;
+    display: flex; gap: 8px; flex-wrap: nowrap;
+    padding: 0 16px 10px;
+    overflow-x: auto;
   }
+  .quick-commands::-webkit-scrollbar { display: none; }
   .quick-cmd {
     padding: 7px 14px;
     background: var(--white);
     border: 1.5px solid var(--sand-dk);
     border-radius: 20px; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.8rem; font-weight: 500; color: var(--ink-lt);
-    transition: all 0.18s; white-space: nowrap;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.78rem; font-weight: 500; color: var(--ink-lt);
+    transition: all 0.18s; white-space: nowrap; flex-shrink: 0;
   }
-  .quick-cmd:hover { border-color: var(--rose); color: var(--rose); background: #fff5f6; }
+  .quick-cmd:hover { border-color: var(--mod); color: var(--mod); background: var(--white); }
+  .quick-cmd.cdl { border-color: rgba(26,107,92,0.3); color: var(--cdl-dk); }
+  .quick-cmd.cdl:hover { border-color: var(--cdl); background: #f0faf8; }
 
   /* Bubbles */
   .bubble-wrap { display: flex; flex-direction: column; max-width: 84%; }
@@ -229,54 +287,52 @@
   .bubble {
     padding: 13px 16px;
     border-radius: 18px;
-    font-size: 0.92rem; line-height: 1.6;
+    font-size: 0.91rem; line-height: 1.65;
     word-break: break-word;
   }
   .bubble-wrap.user .bubble {
-    background: linear-gradient(135deg, var(--rose-lt), var(--rose-dk));
+    background: linear-gradient(135deg, var(--mod-lt), var(--mod-dk));
     color: var(--white);
     border-bottom-right-radius: 4px;
+    transition: background 0.3s;
   }
   .bubble-wrap.ai .bubble {
     background: var(--white);
     color: var(--ink);
     border: 1px solid var(--sand);
     border-bottom-left-radius: 4px;
-    box-shadow: 0 2px 8px rgba(26,18,24,0.06);
+    box-shadow: 0 2px 8px rgba(28,23,20,0.06);
   }
   .bubble-wrap.ai .bubble p { margin-bottom: 8px; }
   .bubble-wrap.ai .bubble p:last-child { margin-bottom: 0; }
-  .bubble-wrap.ai .bubble strong { color: var(--rose-dk); }
+  .bubble-wrap.ai .bubble strong { color: var(--mod-dk); }
   .bubble-wrap.ai .bubble code {
     background: var(--sand); padding: 2px 6px;
     border-radius: 5px; font-size: 0.85em;
   }
-  .bubble-wrap.ai .bubble ul, .bubble-wrap.ai .bubble ol {
-    padding-left: 18px; margin: 6px 0;
-  }
+  .bubble-wrap.ai .bubble ul, .bubble-wrap.ai .bubble ol { padding-left: 18px; margin: 6px 0; }
   .bubble-wrap.ai .bubble li { margin-bottom: 4px; }
-
-  .bubble-meta {
-    font-size: 0.7rem; color: var(--muted);
-    margin-top: 4px; padding: 0 4px;
-  }
 
   .sources-tag {
     display: inline-flex; align-items: center; gap: 4px;
     background: #fff5f6; border: 1px solid rgba(192,57,75,0.2);
-    color: var(--rose-dk);
-    font-size: 0.72rem; font-weight: 500;
+    color: var(--srh-dk);
+    font-size: 0.71rem; font-weight: 500;
     padding: 3px 10px; border-radius: 20px;
     margin-top: 6px;
   }
+  body.cdl-mode .sources-tag {
+    background: #f0faf8; border-color: rgba(26,107,92,0.2);
+    color: var(--cdl-dk);
+  }
 
-  /* Typing indicator */
+  /* Typing */
   .typing-bubble {
     background: var(--white);
     border: 1px solid var(--sand);
     border-radius: 18px; border-bottom-left-radius: 4px;
     padding: 14px 18px; display: flex; gap: 5px;
-    box-shadow: 0 2px 8px rgba(26,18,24,0.06);
+    box-shadow: 0 2px 8px rgba(28,23,20,0.06);
   }
   .dot {
     width: 7px; height: 7px;
@@ -287,24 +343,21 @@
   .dot:nth-child(3) { animation-delay: 0.4s; }
   @keyframes bounce {
     0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-6px); background: var(--rose); }
+    30% { transform: translateY(-6px); background: var(--mod); }
   }
 
-  /* Input area */
+  /* Input */
   .input-area {
-    padding: 12px 16px 20px;
+    padding: 10px 16px 18px;
     background: var(--white);
     border-top: 1px solid var(--sand);
   }
-  .input-row {
-    display: flex; gap: 10px; align-items: flex-end;
-  }
+  .input-row { display: flex; gap: 10px; align-items: flex-end; }
   #user-input {
-    flex: 1;
-    padding: 13px 16px;
+    flex: 1; padding: 13px 16px;
     border: 1.5px solid var(--sand-dk);
     border-radius: 14px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     font-size: 0.95rem; color: var(--ink);
     background: var(--cream);
     outline: none; resize: none;
@@ -312,17 +365,17 @@
     transition: border-color 0.2s;
     -webkit-appearance: none;
   }
-  #user-input:focus { border-color: var(--rose); background: var(--white); }
+  #user-input:focus { border-color: var(--mod); background: var(--white); }
   #user-input::placeholder { color: var(--sand-dk); }
 
   .send-btn {
     width: 50px; height: 50px; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--rose-lt), var(--rose-dk));
+    background: linear-gradient(135deg, var(--mod-lt), var(--mod-dk));
     border: none; border-radius: 14px;
     color: var(--white); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(192,57,75,0.3);
-    transition: all 0.18s;
+    box-shadow: 0 4px 14px rgba(28,23,20,0.2);
+    transition: all 0.2s;
   }
   .send-btn:hover { transform: scale(1.05); }
   .send-btn:active { transform: scale(0.97); }
@@ -335,23 +388,33 @@
     border: 1px solid var(--sand);
     border-radius: var(--radius);
     padding: 24px; text-align: center;
-    box-shadow: 0 4px 16px rgba(26,18,24,0.06);
+    box-shadow: 0 4px 16px rgba(28,23,20,0.06);
     align-self: center; width: 100%;
     animation: fadeUp 0.4s ease both;
   }
   .welcome-card .wc-icon { font-size: 2.5rem; margin-bottom: 12px; }
   .welcome-card h3 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.25rem; color: var(--ink); margin-bottom: 8px;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem; color: var(--ink); margin-bottom: 8px;
   }
-  .welcome-card p { font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
+  .welcome-card p { font-size: 0.86rem; color: var(--muted); line-height: 1.6; }
+
+  /* Module badge in welcome */
+  .module-badge {
+    display: inline-block;
+    padding: 4px 12px; border-radius: 100px;
+    font-size: 0.75rem; font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .module-badge.srh { background: #fff0f2; color: var(--srh-dk); border: 1px solid rgba(192,57,75,0.2); }
+  .module-badge.cdl { background: #f0faf8; color: var(--cdl-dk); border: 1px solid rgba(26,107,92,0.2); }
 
   /* Animations */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(16px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .bubble-wrap { animation: fadeUp 0.3s ease both; }
+  .bubble-wrap { animation: fadeUp 0.28s ease both; }
 
   /* Toast */
   .toast {
@@ -359,7 +422,7 @@
     transform: translateX(-50%) translateY(20px);
     background: var(--ink); color: var(--white);
     padding: 10px 20px; border-radius: 100px;
-    font-size: 0.85rem; opacity: 0;
+    font-size: 0.84rem; opacity: 0;
     transition: all 0.3s; z-index: 999;
     white-space: nowrap;
   }
@@ -373,12 +436,12 @@
 </head>
 <body>
 
-<!-- ══════════════ AUTH SCREEN ══════════════ -->
+<!-- ══════════════ AUTH ══════════════ -->
 <div id="auth-screen">
   <div class="brand">
     <div class="brand-icon">🏥</div>
-    <h1>SRH Tutor</h1>
-    <p>SPLA031 · Sexual &amp; Reproductive Health</p>
+    <h1>SPLA Tutor</h1>
+    <p>Sexual &amp; Reproductive Health · Chronic Disease &amp; Lifestyle</p>
   </div>
 
   <div class="auth-card">
@@ -389,7 +452,7 @@
 
     <!-- Sign In -->
     <form class="auth-form" id="signin-form" onsubmit="handleSignIn(event)">
-      <div class="auth-error"  id="signin-error"></div>
+      <div class="auth-error"   id="signin-error"></div>
       <div class="auth-success" id="signin-success"></div>
       <div class="field">
         <label>Email</label>
@@ -400,26 +463,24 @@
         <input type="password" id="signin-password" placeholder="••••••••" required/>
       </div>
       <button type="submit" class="btn-primary" id="signin-btn">Sign In</button>
-      <p style="text-align:center; margin-top:8px; font-size:0.82rem; color:var(--muted);">
+      <p style="text-align:center;margin-top:8px;font-size:0.81rem;color:var(--muted);">
         Didn't get a confirmation email?
-        <a href="#" onclick="showResend()" style="color:var(--rose); font-weight:600; text-decoration:none;">Resend it</a>
+        <a href="#" onclick="showResend()" style="color:var(--srh);font-weight:600;text-decoration:none;">Resend it</a>
       </p>
     </form>
 
-    <!-- Resend Confirmation -->
+    <!-- Resend -->
     <div id="resend-panel" class="auth-form hidden" style="gap:14px;">
       <div class="auth-error"   id="resend-error"></div>
       <div class="auth-success" id="resend-success"></div>
-      <p style="font-size:0.875rem; color:var(--muted); text-align:center; line-height:1.5;">
-        Enter your email and we'll send a fresh confirmation link.
-      </p>
+      <p style="font-size:0.875rem;color:var(--muted);text-align:center;line-height:1.5;">Enter your email and we'll send a fresh confirmation link.</p>
       <div class="field">
         <label>Email</label>
         <input type="email" id="resend-email" placeholder="your@email.com" required/>
       </div>
       <button class="btn-primary" id="resend-btn" onclick="handleResend()">Send Confirmation Email</button>
-      <p style="text-align:center; font-size:0.82rem; color:var(--muted);">
-        <a href="#" onclick="showSignIn()" style="color:var(--rose); font-weight:600; text-decoration:none;">← Back to Sign In</a>
+      <p style="text-align:center;font-size:0.81rem;color:var(--muted);">
+        <a href="#" onclick="showSignIn()" style="color:var(--srh);font-weight:600;text-decoration:none;">← Back to Sign In</a>
       </p>
     </div>
 
@@ -444,12 +505,14 @@
   </div>
 </div>
 
-<!-- ══════════════ CHAT SCREEN ══════════════ -->
+<!-- ══════════════ CHAT ══════════════ -->
 <div id="chat-screen">
+
+  <!-- Top bar -->
   <div class="topbar">
-    <div class="topbar-icon">🏥</div>
+    <div class="topbar-icon" id="topbar-icon">🏥</div>
     <div class="topbar-info">
-      <h2>SRH Tutor</h2>
+      <h2 id="topbar-title">SPLA Tutor</h2>
       <span id="user-label">Loading…</span>
     </div>
     <div class="topbar-actions">
@@ -458,22 +521,32 @@
     </div>
   </div>
 
+  <!-- Module selector -->
+  <div class="module-selector">
+    <button class="mod-pill active-srh" id="pill-srh" onclick="switchModule('srh')">
+      <span class="dot"></span> SPLA031 · Sexual &amp; Reproductive Health
+    </button>
+    <button class="mod-pill" id="pill-cdl" onclick="switchModule('cdl')">
+      <span class="dot"></span> Chronic Disease &amp; Lifestyle
+    </button>
+  </div>
+
+  <!-- Messages -->
   <div id="messages">
-    <div class="welcome-card">
+    <div class="welcome-card" id="welcome-card">
       <div class="wc-icon">📖</div>
-      <h3>Welcome to SPLA031</h3>
-      <p>Ask me anything from your Sexual &amp; Reproductive Health training manual, or try a quick command below.</p>
+      <div class="module-badge srh" id="welcome-badge">SPLA031 · SRH</div>
+      <h3 id="welcome-title">Sexual &amp; Reproductive Health</h3>
+      <p id="welcome-text">Ask me anything from your SRH training manual — anatomy, contraception, STIs, pregnancy, and more.</p>
     </div>
   </div>
 
-  <div class="quick-commands">
-    <button class="quick-cmd" onclick="quickSend('Explain the menstrual cycle')">🔬 Menstrual cycle</button>
-    <button class="quick-cmd" onclick="quickSend('What are the types of contraception?')">💊 Contraception</button>
-    <button class="quick-cmd" onclick="quickSend('Quiz me')">❓ Quiz me</button>
-    <button class="quick-cmd" onclick="quickSend('Give me a case study exercise')">📝 Exercise</button>
-    <button class="quick-cmd" onclick="quickSend('Explain HIV transmission')">🧬 HIV</button>
+  <!-- Quick commands (dynamically updated per module) -->
+  <div class="quick-commands" id="quick-commands">
+    <!-- injected by JS -->
   </div>
 
+  <!-- Input -->
   <div class="input-area">
     <div class="input-row">
       <textarea id="user-input" placeholder="Ask about SRH topics…" rows="1"
@@ -490,35 +563,124 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API = 'https://srh-tutor-1.onrender.com';  // empty = same origin; or set to 'http://localhost:8000' for dev
+const API = 'https://srh-tutor-1.onrender.com';
 let accessToken = localStorage.getItem('srh_token') || null;
 let currentUser = null;
+let activeModule = localStorage.getItem('spla_module') || 'srh';
 
-// ── Resend confirmation ───────────────────────────────────────
+// ══════════════════════════════════════════
+//  MODULE CONFIG
+// ══════════════════════════════════════════
+const MODULES = {
+  srh: {
+    icon:        '🏥',
+    title:       'Sexual & Reproductive Health',
+    badge:       'SPLA031 · SRH',
+    badgeClass:  'srh',
+    placeholder: 'Ask about SRH topics…',
+    welcome:     'Ask me anything from your SRH training manual — anatomy, contraception, STIs, pregnancy, and more.',
+    commands: [
+      { label: '🔬 Menstrual cycle',    text: 'Explain the menstrual cycle' },
+      { label: '💊 Contraception',      text: 'What are the types of contraception?' },
+      { label: '🧬 HIV transmission',   text: 'Explain HIV transmission and prevention' },
+      { label: '🤰 Antenatal care',     text: 'What happens during antenatal care?' },
+      { label: '❓ Quiz me',            text: 'Quiz me on SRH topics' },
+      { label: '📝 Case study',         text: 'Give me a case study exercise on reproductive health' },
+    ]
+  },
+  cdl: {
+    icon:        '🫀',
+    title:       'Chronic Disease & Lifestyle',
+    badge:       'CDL · Lifestyle',
+    badgeClass:  'cdl',
+    placeholder: 'Ask about chronic disease & lifestyle topics…',
+    welcome:     'Ask me anything from your Chronic Disease & Lifestyle training material — hypertension, diabetes, obesity, nutrition, and more.',
+    commands: [
+      { label: '❤️ Hypertension',       text: 'Explain hypertension causes and management' },
+      { label: '🩸 Diabetes',           text: 'What is type 2 diabetes and how is it managed?' },
+      { label: '🍎 Nutrition',          text: 'Explain the role of nutrition in chronic disease prevention' },
+      { label: '🏃 Physical activity',  text: 'How does physical activity affect chronic disease risk?' },
+      { label: '🫁 Respiratory disease', text: 'Explain chronic obstructive pulmonary disease (COPD)' },
+      { label: '❓ Quiz me',            text: 'Quiz me on chronic disease and lifestyle topics' },
+    ]
+  }
+};
+
+// ══════════════════════════════════════════
+//  MODULE SWITCHER
+// ══════════════════════════════════════════
+function switchModule(mod) {
+  activeModule = mod;
+  localStorage.setItem('spla_module', mod);
+  const cfg = MODULES[mod];
+
+  // Body class for colour scheme
+  document.body.classList.toggle('cdl-mode', mod === 'cdl');
+
+  // Pills
+  document.getElementById('pill-srh').className = 'mod-pill' + (mod === 'srh' ? ' active-srh' : '');
+  document.getElementById('pill-cdl').className = 'mod-pill' + (mod === 'cdl' ? ' active-cdl' : '');
+
+  // Topbar
+  document.getElementById('topbar-icon').textContent  = cfg.icon;
+  document.getElementById('topbar-title').textContent = cfg.title;
+
+  // Input placeholder
+  document.getElementById('user-input').placeholder = cfg.placeholder;
+
+  // Quick commands
+  renderQuickCommands(mod);
+
+  // Welcome card (only if messages area is empty / still on welcome)
+  const wc = document.getElementById('welcome-card');
+  if (wc) {
+    document.getElementById('welcome-badge').textContent  = cfg.badge;
+    document.getElementById('welcome-badge').className    = `module-badge ${cfg.badgeClass}`;
+    document.getElementById('welcome-title').textContent  = cfg.title;
+    document.getElementById('welcome-text').textContent   = cfg.welcome;
+    wc.querySelector('.wc-icon').textContent              = cfg.icon;
+  }
+
+  showToast(`Switched to ${cfg.title}`);
+}
+
+function renderQuickCommands(mod) {
+  const container = document.getElementById('quick-commands');
+  container.innerHTML = '';
+  MODULES[mod].commands.forEach(cmd => {
+    const btn = document.createElement('button');
+    btn.className = `quick-cmd${mod === 'cdl' ? ' cdl' : ''}`;
+    btn.textContent = cmd.label;
+    btn.onclick = () => quickSend(cmd.text);
+    container.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════
 function showResend() {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('signin-form').classList.add('hidden');
   document.getElementById('signup-form').classList.add('hidden');
   document.getElementById('resend-panel').classList.remove('hidden');
 }
-
 function showSignIn() {
   document.getElementById('resend-panel').classList.add('hidden');
   switchTab('signin');
 }
 
 async function handleResend() {
-  const btn   = document.getElementById('resend-btn');
-  const err   = document.getElementById('resend-error');
-  const suc   = document.getElementById('resend-success');
+  const btn = document.getElementById('resend-btn');
+  const err = document.getElementById('resend-error');
+  const suc = document.getElementById('resend-success');
   const email = document.getElementById('resend-email').value.trim();
   err.style.display = 'none'; suc.style.display = 'none';
   if (!email) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; return; }
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const res = await fetch(`${API}/auth/resend-confirmation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ email, password: '' })
     });
     const data = await res.json();
@@ -532,23 +694,25 @@ async function handleResend() {
   }
 }
 
-// ── Tab switcher ──────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', (tab==='signin' && i===0)||(tab==='signup' && i===1))
+    b.classList.toggle('active', (tab==='signin'&&i===0)||(tab==='signup'&&i===1))
   );
   document.getElementById('signin-form').classList.toggle('hidden', tab !== 'signin');
   document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup');
+  document.getElementById('resend-panel').classList.add('hidden');
 }
 
-// ── Toast ─────────────────────────────────────────────────────
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2800);
+  setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// ── Auth ──────────────────────────────────────────────────────
+function authHeaders() {
+  return { 'Content-Type':'application/json', 'Authorization':`Bearer ${accessToken}` };
+}
+
 async function handleSignIn(e) {
   e.preventDefault();
   const btn = document.getElementById('signin-btn');
@@ -557,8 +721,7 @@ async function handleSignIn(e) {
   btn.disabled = true; btn.textContent = 'Signing in…';
   try {
     const res = await fetch(`${API}/auth/signin`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         email:    document.getElementById('signin-email').value,
         password: document.getElementById('signin-password').value
@@ -566,8 +729,8 @@ async function handleSignIn(e) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Sign in failed');
-    accessToken = data.access_token;
-    currentUser = data.user;
+    accessToken  = data.access_token;
+    currentUser  = data.user;
     localStorage.setItem('srh_token', accessToken);
     showChat();
   } catch(ex) {
@@ -586,8 +749,7 @@ async function handleSignUp(e) {
   btn.disabled = true; btn.textContent = 'Creating account…';
   try {
     const res = await fetch(`${API}/auth/signup`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         email:     document.getElementById('signup-email').value,
         password:  document.getElementById('signup-password').value,
@@ -608,49 +770,36 @@ async function handleSignUp(e) {
 }
 
 async function signOut() {
-  try { await fetch(`${API}/auth/signout`, { method:'POST', headers: authHeaders() }); }
-  catch(e) {}
+  try { await fetch(`${API}/auth/signout`, { method:'POST', headers: authHeaders() }); } catch(e) {}
   accessToken = null; currentUser = null;
   localStorage.removeItem('srh_token');
-  document.getElementById('chat-screen').style.display = 'none';
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('messages').innerHTML = `
-    <div class="welcome-card">
-      <div class="wc-icon">📖</div>
-      <h3>Welcome to SPLA031</h3>
-      <p>Ask me anything from your Sexual &amp; Reproductive Health training manual.</p>
-    </div>`;
+  document.getElementById('chat-screen').style.display  = 'none';
+  document.getElementById('auth-screen').style.display  = 'flex';
+  resetMessages();
   showToast('Signed out successfully');
 }
 
-function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${accessToken}`
-  };
-}
-
-// ── Show chat ─────────────────────────────────────────────────
+// ══════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════
 async function showChat() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('chat-screen').style.display = 'flex';
-  // Load user info
   try {
     if (!currentUser) {
       const r = await fetch(`${API}/auth/me`, { headers: authHeaders() });
       if (r.ok) currentUser = await r.json();
     }
     if (currentUser) {
-      document.getElementById('user-label').textContent =
-        currentUser.full_name || currentUser.email;
+      document.getElementById('user-label').textContent = currentUser.full_name || currentUser.email;
     }
-    // Load history
     await loadHistory();
   } catch(e) {}
+  // Apply saved module
+  switchModule(activeModule);
   document.getElementById('user-input').focus();
 }
 
-// ── Load chat history ─────────────────────────────────────────
 async function loadHistory() {
   try {
     const r = await fetch(`${API}/chat/history`, { headers: authHeaders() });
@@ -664,18 +813,13 @@ async function loadHistory() {
   } catch(e) {}
 }
 
-// ── Chat ──────────────────────────────────────────────────────
 function appendBubble(role, text, scroll=true) {
   const container = document.getElementById('messages');
-  const wrap = document.createElement('div');
+  const wrap   = document.createElement('div');
   wrap.className = `bubble-wrap ${role}`;
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  if (role === 'ai') {
-    bubble.innerHTML = formatMarkdown(text);
-  } else {
-    bubble.textContent = text;
-  }
+  bubble.innerHTML = role === 'ai' ? formatMarkdown(text) : escapeHtml(text);
   wrap.appendChild(bubble);
   container.appendChild(wrap);
   if (scroll) scrollBottom();
@@ -686,8 +830,12 @@ function appendSources(parentWrap, sources) {
   if (!sources || sources.length === 0) return;
   const tag = document.createElement('div');
   tag.className = 'sources-tag';
-  tag.innerHTML = `📄 Manual pages: ${sources.join(', ')}`;
+  tag.innerHTML = `📄 ${sources.join(' · ')}`;
   parentWrap.appendChild(tag);
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function formatMarkdown(text) {
@@ -696,8 +844,8 @@ function formatMarkdown(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(/^### (.+)$/gm, '<strong>$1</strong>')
-    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^## (.+)$/gm,  '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm,   '<li>$1</li>')
     .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
     .split('\n\n').map(p => p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '').join('');
 }
@@ -724,9 +872,9 @@ async function checkReady() {
 }
 
 async function sendMessage() {
-  const input = document.getElementById('user-input');
+  const input   = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
-  const text = input.value.trim();
+  const text    = input.value.trim();
   if (!text) return;
 
   input.value = ''; autoResize(input);
@@ -735,13 +883,10 @@ async function sendMessage() {
   showTyping();
 
   try {
-    // Check if model is still warming up
     const ready = await checkReady();
     if (!ready) {
       hideTyping();
-      const warmMsg = appendBubble('ai',
-        '⏳ The AI model is still warming up (this takes ~30 seconds on first start). ' +
-        'Your message has been sent — please wait...');
+      appendBubble('ai', '⏳ The AI model is still warming up (~30 seconds on first start). Your message has been sent — please wait…');
       showTyping();
     }
 
@@ -759,7 +904,7 @@ async function sendMessage() {
     }
     const data = await r.json();
     const aiBubble = appendBubble('ai', data.response);
-    if (data.sources && data.sources.length > 0) appendSources(aiBubble, data.sources);
+    if (data.sources?.length > 0) appendSources(aiBubble, data.sources);
   } catch(ex) {
     hideTyping();
     appendBubble('ai', '⚠️ Connection error. Please check your internet and try again.');
@@ -773,19 +918,27 @@ function quickSend(text) {
   document.getElementById('user-input').value = text;
   sendMessage();
 }
-
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
-
 function scrollBottom() {
   const m = document.getElementById('messages');
   m.scrollTop = m.scrollHeight;
+}
+
+function resetMessages() {
+  const cfg = MODULES[activeModule];
+  document.getElementById('messages').innerHTML = `
+    <div class="welcome-card" id="welcome-card">
+      <div class="wc-icon">${cfg.icon}</div>
+      <div class="module-badge ${cfg.badgeClass}" id="welcome-badge">${cfg.badge}</div>
+      <h3 id="welcome-title">${cfg.title}</h3>
+      <p id="welcome-text">${cfg.welcome}</p>
+    </div>`;
 }
 
 async function clearHistory() {
@@ -793,18 +946,17 @@ async function clearHistory() {
   try {
     const r = await fetch(`${API}/chat/history`, { method:'DELETE', headers: authHeaders() });
     if (r.ok) {
-      document.getElementById('messages').innerHTML = `
-        <div class="welcome-card">
-          <div class="wc-icon">📖</div>
-          <h3>Fresh start!</h3>
-          <p>Your chat history has been cleared. Ask me anything about SPLA031.</p>
-        </div>`;
+      resetMessages();
       showToast('Chat history cleared');
     }
   } catch(e) {}
 }
 
-// ── Auto-login if token exists ────────────────────────────────
+// ── Init quick commands on load ───────────────────────────────
+renderQuickCommands(activeModule);
+if (activeModule === 'cdl') document.body.classList.add('cdl-mode');
+
+// ── Auto-login ────────────────────────────────────────────────
 (async function init() {
   if (!accessToken) return;
   try {
