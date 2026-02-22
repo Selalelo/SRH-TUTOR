@@ -35,6 +35,8 @@ from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
     PayloadSchemaType, Filter, FieldCondition, MatchValue
 )
+# fastembed is ~50MB vs sentence-transformers ~400MB — critical for free tier
+from fastembed import TextEmbedding
 
 # ══════════════════════════════════════════════════════════════
 #  CONNECTIONS
@@ -83,16 +85,21 @@ _agent    = None
 def get_embedder():
     global _embedder
     if _embedder is None:
-        from sentence_transformers import SentenceTransformer
-        print("🔌 Loading embedding model from cache...")
+        print("🔌 Loading embedding model (fastembed)...")
         try:
-            # Load from local cache — model was downloaded during build step
-            _embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+            # fastembed uses ONNX runtime — only ~50MB, no torch needed
+            _embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
             print("✅ Embedding model ready.")
         except Exception as e:
             print(f"❌ Embedding model failed to load: {e}")
             raise RuntimeError(f"Embedding model unavailable: {e}")
     return _embedder
+
+def embed(text: str) -> list:
+    """Embed a single string, returning a flat list."""
+    embedder = get_embedder()
+    vectors = list(embedder.embed([text]))
+    return vectors[0].tolist()
 
 def get_llm():
     global _llm
@@ -189,9 +196,7 @@ def search_manual(query: str, n_results: int = 3):
         raise HTTPException(status_code=503,
             detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
     try:
-        query_vector = get_embedder().encode(
-            query, convert_to_numpy=True, normalize_embeddings=True
-        ).tolist()
+        query_vector = embed(query)
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector, limit=n_results, with_payload=True
@@ -226,7 +231,7 @@ def save_message(user_id: str, role: str, content: str, sources: list = []):
     # Only embed to Qdrant if model already loaded — don't trigger load just for history
     if _embedder is not None:
         try:
-            vector = _embedder.encode(content, convert_to_numpy=True).tolist()
+            vector = embed(content)
             qdrant.upsert(collection_name=CHAT_COLLECTION, points=[
                 PointStruct(id=msg_id, vector=vector,
                     payload={"user_id": user_id, "role": role,
@@ -482,7 +487,7 @@ def _prewarm():
     """Load heavy models in background so first chat request is fast."""
     try:
         print("🔌 Pre-warming embedding model in background...")
-        get_embedder()
+        embed("warmup test")
         print("🔌 Pre-warming LLM + agent in background...")
         get_agent()
         gc.collect()
