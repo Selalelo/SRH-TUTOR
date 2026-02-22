@@ -609,7 +609,30 @@ const MODULES = {
 // ══════════════════════════════════════════
 //  MODULE SWITCHER
 // ══════════════════════════════════════════
+// ── Per-module chat cache (in memory) ────────────────────────
+const moduleChats = { srh: null, cdl: null };
+
+function saveChatState(mod) {
+  // Save current messages HTML for this module
+  moduleChats[mod] = document.getElementById('messages').innerHTML;
+}
+
+function restoreChatState(mod) {
+  const container = document.getElementById('messages');
+  if (moduleChats[mod]) {
+    container.innerHTML = moduleChats[mod];
+    scrollBottom();
+  } else {
+    resetMessages(mod);
+  }
+}
+
 function switchModule(mod) {
+  if (mod === activeModule) return;
+
+  // Save current module's chat before switching
+  saveChatState(activeModule);
+
   activeModule = mod;
   localStorage.setItem('spla_module', mod);
   const cfg = MODULES[mod];
@@ -631,15 +654,8 @@ function switchModule(mod) {
   // Quick commands
   renderQuickCommands(mod);
 
-  // Welcome card (only if messages area is empty / still on welcome)
-  const wc = document.getElementById('welcome-card');
-  if (wc) {
-    document.getElementById('welcome-badge').textContent  = cfg.badge;
-    document.getElementById('welcome-badge').className    = `module-badge ${cfg.badgeClass}`;
-    document.getElementById('welcome-title').textContent  = cfg.title;
-    document.getElementById('welcome-text').textContent   = cfg.welcome;
-    wc.querySelector('.wc-icon').textContent              = cfg.icon;
-  }
+  // Restore this module's chat (or show welcome if first visit)
+  restoreChatState(mod);
 
   showToast(`Switched to ${cfg.title}`);
 }
@@ -810,6 +826,8 @@ async function loadHistory() {
     container.innerHTML = '';
     history.forEach(msg => appendBubble(msg.role === 'human' ? 'user' : 'ai', msg.content, false));
     scrollBottom();
+    // Cache it for the current module
+    moduleChats[activeModule] = container.innerHTML;
   } catch(e) {}
 }
 
@@ -930,8 +948,10 @@ function scrollBottom() {
   m.scrollTop = m.scrollHeight;
 }
 
-function resetMessages() {
-  const cfg = MODULES[activeModule];
+function resetMessages(mod) {
+  mod = mod || activeModule;
+  const cfg = MODULES[mod];
+  moduleChats[mod] = null;  // clear cache for this module
   document.getElementById('messages').innerHTML = `
     <div class="welcome-card" id="welcome-card">
       <div class="wc-icon">${cfg.icon}</div>
@@ -942,11 +962,11 @@ function resetMessages() {
 }
 
 async function clearHistory() {
-  if (!confirm('Clear all your chat history?')) return;
+  if (!confirm('Clear all chat history for the current module?')) return;
   try {
     const r = await fetch(`${API}/chat/history`, { method:'DELETE', headers: authHeaders() });
     if (r.ok) {
-      resetMessages();
+      resetMessages(activeModule);
       showToast('Chat history cleared');
     }
   } catch(e) {}
