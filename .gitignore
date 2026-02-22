@@ -1,0 +1,51 @@
+# ── Environment & Secrets ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+
+# ── Virtual Environments ──────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Database files ────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── PDF files (your training manual) ─────────────────────────
+*.pdf
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS files ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / Editor ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Testing & Coverage ────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Build / Dist ──────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
