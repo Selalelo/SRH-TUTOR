@@ -432,6 +432,147 @@
   #messages::-webkit-scrollbar { width: 4px; }
   #messages::-webkit-scrollbar-track { background: transparent; }
   #messages::-webkit-scrollbar-thumb { background: var(--sand-dk); border-radius: 4px; }
+
+  /* ══════════════════════════════
+     MEDIA QUERIES
+  ══════════════════════════════ */
+
+  /* ── Small phones (< 360px) ── */
+  @media (max-width: 359px) {
+    .brand h1        { font-size: 1.6rem; }
+    .auth-card       { padding: 24px 18px; }
+    .bubble-wrap     { max-width: 94%; }
+    .mod-pill        { font-size: 0.72rem; padding: 6px 12px; }
+    .topbar-info h2  { font-size: 0.9rem; }
+    .input-area      { padding: 8px 12px 14px; }
+    #user-input      { padding: 11px 13px; font-size: 0.88rem; }
+    .send-btn        { width: 44px; height: 44px; }
+    #messages        { padding: 14px 12px; }
+    .quick-cmd       { font-size: 0.72rem; padding: 6px 11px; }
+    .welcome-card    { padding: 18px 16px; }
+    .welcome-card h3 { font-size: 1.05rem; }
+  }
+
+  /* ── Standard phones (360px – 480px) ── */
+  @media (min-width: 360px) and (max-width: 480px) {
+    .brand h1        { font-size: 1.75rem; }
+    .auth-card       { padding: 28px 22px; }
+    .bubble-wrap     { max-width: 90%; }
+    #messages        { padding: 16px 14px; }
+    .input-area      { padding: 10px 14px 16px; }
+    .welcome-card    { padding: 20px 18px; }
+  }
+
+  /* ── Large phones / small tablets (481px – 640px) ── */
+  @media (min-width: 481px) and (max-width: 640px) {
+    .auth-card    { padding: 32px 28px; }
+    .bubble-wrap  { max-width: 86%; }
+    #messages     { padding: 18px 16px; }
+  }
+
+  /* ── Tablets (641px – 1023px) ── */
+  @media (min-width: 641px) and (max-width: 1023px) {
+    /* Auth screen — centre card with more breathing room */
+    #auth-screen  { padding: 40px 32px; }
+    .auth-card    { max-width: 460px; padding: 40px 36px; }
+    .brand h1     { font-size: 2.2rem; }
+    .brand-icon   { width: 76px; height: 76px; font-size: 34px; }
+
+    /* Chat — slightly wider bubbles area */
+    #chat-screen  { max-width: 720px; margin: 0 auto; }
+    .bubble-wrap  { max-width: 78%; }
+    #messages     { padding: 24px 24px; }
+
+    /* Module pills — show full text comfortably */
+    .module-selector { padding: 14px 24px; gap: 12px; }
+    .mod-pill        { font-size: 0.85rem; padding: 9px 20px; }
+
+    /* Topbar */
+    .topbar       { padding: 14px 24px; }
+    .topbar-info h2 { font-size: 1.1rem; }
+
+    /* Input */
+    .input-area   { padding: 12px 24px 22px; }
+    #user-input   { font-size: 1rem; }
+
+    /* Quick commands */
+    .quick-commands { padding: 0 24px 12px; gap: 10px; flex-wrap: wrap; }
+    .quick-cmd      { font-size: 0.83rem; }
+
+    /* Welcome card */
+    .welcome-card   { max-width: 500px; padding: 32px 28px; }
+    .welcome-card h3 { font-size: 1.35rem; }
+  }
+
+  /* ── Desktop (≥ 1024px) ── */
+  @media (min-width: 1024px) {
+    /* Auth — larger, more spaced */
+    #auth-screen  { padding: 60px 40px; }
+    .auth-card    { max-width: 480px; padding: 44px 40px; }
+    .brand h1     { font-size: 2.4rem; }
+    .brand-icon   { width: 80px; height: 80px; font-size: 36px; }
+    .brand        { margin-bottom: 40px; }
+
+    /* Chat — constrain to readable width, centred */
+    #chat-screen  { max-width: 820px; margin: 0 auto;
+                    box-shadow: 0 0 60px rgba(28,23,20,0.1); }
+
+    .bubble-wrap  { max-width: 72%; }
+    #messages     { padding: 28px 32px; gap: 20px; }
+
+    /* Module pills */
+    .module-selector { padding: 16px 32px; gap: 14px; }
+    .mod-pill        { font-size: 0.88rem; padding: 10px 22px; }
+
+    /* Topbar */
+    .topbar         { padding: 16px 32px; }
+    .topbar-info h2 { font-size: 1.15rem; }
+    .topbar-icon    { width: 44px; height: 44px; font-size: 20px; }
+
+    /* Input */
+    .input-area     { padding: 14px 32px 24px; }
+    #user-input     { font-size: 1rem; border-radius: 16px; }
+    .send-btn       { width: 54px; height: 54px; border-radius: 16px; }
+
+    /* Quick commands wrap on desktop */
+    .quick-commands { padding: 0 32px 14px; gap: 10px; flex-wrap: wrap; }
+    .quick-cmd      { font-size: 0.85rem; padding: 8px 16px; }
+
+    /* Welcome */
+    .welcome-card   { max-width: 560px; padding: 36px 32px; }
+    .welcome-card h3 { font-size: 1.45rem; }
+    .welcome-card p  { font-size: 0.92rem; }
+
+    /* Hover effects only on desktop (no hover flicker on touch) */
+    .btn-primary:hover  { box-shadow: 0 10px 28px rgba(192,57,75,0.38); }
+    .mod-pill:hover:not(.active-srh):not(.active-cdl) {
+      border-color: var(--mod); color: var(--mod-dk); background: var(--white);
+    }
+  }
+
+  /* ── Wide desktop (≥ 1280px) ── */
+  @media (min-width: 1280px) {
+    #chat-screen  { max-width: 900px; }
+    #messages     { padding: 32px 40px; }
+    .topbar       { padding: 18px 40px; }
+    .input-area   { padding: 16px 40px 28px; }
+    .quick-commands { padding: 0 40px 14px; }
+    .module-selector { padding: 16px 40px; }
+  }
+
+  /* ── Touch device: remove hover transforms to prevent sticky states ── */
+  @media (hover: none) {
+    .btn-primary:hover  { transform: none; box-shadow: 0 6px 20px rgba(192,57,75,0.28); }
+    .send-btn:hover     { transform: none; }
+    .icon-btn:hover     { border-color: var(--sand-dk); color: var(--muted); background: var(--cream); }
+    .quick-cmd:hover    { border-color: var(--sand-dk); color: var(--ink-lt); background: var(--white); }
+    .mod-pill:hover     { border-color: var(--sand-dk); color: var(--muted); background: var(--cream); }
+  }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
 </style>
 </head>
 <body>
