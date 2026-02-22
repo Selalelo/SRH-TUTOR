@@ -142,13 +142,21 @@ def init_qdrant_chat_collection():
                 collection_name=CHAT_COLLECTION,
                 vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
             )
-            qdrant.create_payload_index(
-                collection_name=CHAT_COLLECTION,
-                field_name="timestamp",
-                field_schema=PayloadSchemaType.FLOAT
-            )
             _known_collections.add(CHAT_COLLECTION)
             print(f"✅ Qdrant '{CHAT_COLLECTION}' created.")
+
+        # Always ensure indexes exist (safe to run even if collection already existed)
+        qdrant.create_payload_index(
+            collection_name=CHAT_COLLECTION,
+            field_name="timestamp",
+            field_schema=PayloadSchemaType.FLOAT
+        )
+        qdrant.create_payload_index(
+            collection_name=CHAT_COLLECTION,
+            field_name="user_id",
+            field_schema=PayloadSchemaType.KEYWORD   # ← required for filter-by-user_id
+        )
+        print(f"✅ Qdrant indexes ready.")
     except Exception as e:
         print(f"⚠️  Qdrant init: {e}")
 
