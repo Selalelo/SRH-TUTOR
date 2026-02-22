@@ -84,9 +84,14 @@ def get_embedder():
     global _embedder
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
-        print("🔌 Loading embedding model...")
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
-        print("✅ Embedding model ready.")
+        print("🔌 Loading embedding model from cache...")
+        try:
+            # Load from local cache — model was downloaded during build step
+            _embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+            print("✅ Embedding model ready.")
+        except Exception as e:
+            print(f"❌ Embedding model failed to load: {e}")
+            raise RuntimeError(f"Embedding model unavailable: {e}")
     return _embedder
 
 def get_llm():
