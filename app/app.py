@@ -2,16 +2,17 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN", "")
-import warnings, logging
+os.environ["HF_TOKEN"]                = os.getenv("HF_TOKEN", "")
+os.environ["TOKENIZERS_PARALLELISM"]  = "false"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"]  = "error"
+
+import warnings, logging, gc, time, uuid
 warnings.filterwarnings("ignore")
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
-import time, uuid
-from typing import List, Union, Optional
+from typing import List, Union
 from typing_extensions import TypedDict
 from pathlib import Path
 
@@ -21,7 +22,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-# Paths
 BASE_DIR   = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
@@ -37,60 +37,72 @@ from qdrant_client.models import (
 )
 
 # ══════════════════════════════════════════════════════════════
-#  CONNECTIONS  (lightweight — no model loading here)
+#  CONNECTIONS
 # ══════════════════════════════════════════════════════════════
 
 _url         = os.getenv("SUPABASE_URL")
 _anon_key    = os.getenv("SUPABASE_ANON_KEY")
 _service_key = os.getenv("SUPABASE_SERVICE_KEY", _anon_key)
 
-supabase: Client       = create_client(_url, _anon_key)
+# One admin client for DB operations, one anon for auth
 supabase_admin: Client = create_client(_url, _service_key)
+supabase_auth:  Client = create_client(_url, _anon_key)
 
 qdrant = QdrantClient(
     url=os.getenv("QDRANT_URL"),
-    api_key=os.getenv("QDRANT_API_KEY")
+    api_key=os.getenv("QDRANT_API_KEY"),
+    timeout=10
 )
 
 MANUAL_COLLECTION = "srh_manual"
 CHAT_COLLECTION   = "srh_chat"
 VECTOR_SIZE       = 384
 
-# ── Embedder: truly lazy — loaded on first use ────────────────
+# Cache collection names so we don't call Qdrant on every request
+_known_collections: set = set()
+
+def collection_exists(name: str) -> bool:
+    global _known_collections
+    if name in _known_collections:
+        return True
+    try:
+        existing = {c.name for c in qdrant.get_collections().collections}
+        _known_collections = existing
+        return name in existing
+    except Exception:
+        return False
+
+# ══════════════════════════════════════════════════════════════
+#  LAZY SINGLETONS
+# ══════════════════════════════════════════════════════════════
+
 _embedder = None
+_llm      = None
+_agent    = None
 
 def get_embedder():
     global _embedder
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
-        print("🔌 Loading embedding model (first use)...")
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        print("🔌 Loading embedding model...")
+        _embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
         print("✅ Embedding model ready.")
     return _embedder
-
-# ── LLM: lazy too ────────────────────────────────────────────
-_llm = None
 
 def get_llm():
     global _llm
     if _llm is None:
-        _llm = ChatGroq(model="llama-3.3-70b-versatile")
+        _llm = ChatGroq(model="llama-3.3-70b-versatile", timeout=30, max_retries=1)
     return _llm
-
-# ── LangGraph agent: lazy ─────────────────────────────────────
-_agent = None
 
 def get_agent():
     global _agent
     if _agent is None:
         class AgentState(TypedDict):
             messages: List[Union[HumanMessage, SystemMessage, AIMessage]]
-
         def process(state: AgentState) -> AgentState:
             response = get_llm().invoke(state["messages"])
-            state["messages"].append(AIMessage(content=response.content))
-            return state
-
+            return {"messages": [AIMessage(content=response.content)]}
         graph = StateGraph(AgentState)
         graph.add_node("process", process)
         graph.add_edge(START, "process")
@@ -99,19 +111,12 @@ def get_agent():
     return _agent
 
 # ══════════════════════════════════════════════════════════════
-#  FASTAPI APP  — created immediately so port can bind
+#  FASTAPI APP
 # ══════════════════════════════════════════════════════════════
 
 app = FastAPI(title="SRH Tutor API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/")
@@ -120,17 +125,15 @@ def serve_frontend():
 
 @app.get("/health")
 def health():
-    """Render health check — responds instantly, no heavy deps needed."""
     return {"status": "ok"}
 
 # ══════════════════════════════════════════════════════════════
-#  QDRANT HELPERS
+#  QDRANT INIT
 # ══════════════════════════════════════════════════════════════
 
 def init_qdrant_chat_collection():
     try:
-        existing = [c.name for c in qdrant.get_collections().collections]
-        if CHAT_COLLECTION not in existing:
+        if not collection_exists(CHAT_COLLECTION):
             qdrant.create_collection(
                 collection_name=CHAT_COLLECTION,
                 vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
@@ -140,9 +143,10 @@ def init_qdrant_chat_collection():
                 field_name="timestamp",
                 field_schema=PayloadSchemaType.FLOAT
             )
-            print(f"✅ Qdrant collection '{CHAT_COLLECTION}' created.")
+            _known_collections.add(CHAT_COLLECTION)
+            print(f"✅ Qdrant '{CHAT_COLLECTION}' created.")
     except Exception as e:
-        print(f"⚠️  Qdrant init warning: {e}")
+        print(f"⚠️  Qdrant init: {e}")
 
 # ══════════════════════════════════════════════════════════════
 #  AUTH HELPER
@@ -153,10 +157,12 @@ def get_current_user(authorization: str = Header(...)):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
     token = authorization.split(" ")[1]
     try:
-        user = supabase.auth.get_user(token)
+        user = supabase_admin.auth.get_user(token)
         if not user or not user.user:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         return user.user
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=401, detail="Could not validate token")
 
@@ -164,31 +170,26 @@ def get_current_user(authorization: str = Header(...)):
 #  MANUAL SEARCH
 # ══════════════════════════════════════════════════════════════
 
-def search_manual(query: str, n_results: int = 4):
-    existing = [c.name for c in qdrant.get_collections().collections]
-    if MANUAL_COLLECTION not in existing:
-        raise HTTPException(
-            status_code=503,
-            detail="📚 Manual not ingested yet. Run: python ingest_srh.py"
-        )
+def search_manual(query: str, n_results: int = 3):
+    if not collection_exists(MANUAL_COLLECTION):
+        raise HTTPException(status_code=503,
+            detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
     try:
-        query_vector = get_embedder().encode(query).tolist()
+        query_vector = get_embedder().encode(
+            query, convert_to_numpy=True, normalize_embeddings=True
+        ).tolist()
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
-            query=query_vector,
-            limit=n_results,
-            with_payload=True
+            query=query_vector, limit=n_results, with_payload=True
         )
         if not results.points:
             return "", []
-        context = ""
-        sources = []
+        parts, sources = [], []
         for hit in results.points:
-            page = hit.payload["page"]
-            text = hit.payload["text"]
-            context += f"\n[Page {page}]:\n{text}\n"
-            sources.append(f"Page {page}")
-        return context, sources
+            parts.append(f"[Page {hit.payload['page']}]:\n{hit.payload['text']}")
+            sources.append(f"Page {hit.payload['page']}")
+        del results
+        return "\n".join(parts), sources
     except HTTPException:
         raise
     except Exception as e:
@@ -203,38 +204,36 @@ def save_message(user_id: str, role: str, content: str, sources: list = []):
     msg_id = str(uuid.uuid4())
     try:
         supabase_admin.table("chat_messages").insert({
-            "id": msg_id, "user_id": user_id,
-            "role": role, "content": content,
-            "sources": sources if sources else []
+            "id": msg_id, "user_id": user_id, "role": role,
+            "content": content, "sources": sources or []
         }).execute()
     except Exception as e:
         print(f"⚠️  Supabase insert failed: {e}")
-    try:
-        vector = get_embedder().encode(content).tolist()
-        qdrant.upsert(
-            collection_name=CHAT_COLLECTION,
-            points=[PointStruct(
-                id=msg_id, vector=vector,
-                payload={"user_id": user_id, "role": role,
-                         "content": content, "timestamp": time.time()}
-            )]
-        )
-    except Exception as e:
-        print(f"⚠️  Qdrant upsert failed: {e}")
+    # Only embed to Qdrant if model already loaded — don't trigger load just for history
+    if _embedder is not None:
+        try:
+            vector = _embedder.encode(content, convert_to_numpy=True).tolist()
+            qdrant.upsert(collection_name=CHAT_COLLECTION, points=[
+                PointStruct(id=msg_id, vector=vector,
+                    payload={"user_id": user_id, "role": role,
+                             "content": content, "timestamp": time.time()})
+            ])
+            del vector
+        except Exception as e:
+            print(f"⚠️  Qdrant upsert failed: {e}")
 
-def load_user_history(user_id: str, limit: int = 20):
+def load_user_history(user_id: str, limit: int = 8):
     try:
         res = (supabase_admin.table("chat_messages")
-               .select("role, content")
-               .eq("user_id", user_id)
-               .order("created_at", desc=False)
-               .limit(limit).execute())
+               .select("role, content").eq("user_id", user_id)
+               .order("created_at", desc=False).limit(limit).execute())
         messages = []
         for row in res.data:
             if row["role"] == "human":
                 messages.append(HumanMessage(content=row["content"]))
             elif row["role"] == "ai":
                 messages.append(AIMessage(content=row["content"]))
+        del res
         return messages
     except Exception as e:
         print(f"⚠️  History load failed: {e}")
@@ -245,9 +244,10 @@ def get_history_for_api(user_id: str, limit: int = 30):
         res = (supabase_admin.table("chat_messages")
                .select("role, content, sources, created_at")
                .eq("user_id", user_id)
-               .order("created_at", desc=False)
-               .limit(limit).execute())
-        return res.data or []
+               .order("created_at", desc=False).limit(limit).execute())
+        data = res.data or []
+        del res
+        return data
     except Exception as e:
         print(f"⚠️  get_history_for_api failed: {e}")
         return []
@@ -258,20 +258,16 @@ def delete_user_history(user_id: str):
     except Exception as e:
         print(f"⚠️  Supabase delete failed: {e}")
     try:
-        qdrant.delete(
-            collection_name=CHAT_COLLECTION,
-            points_selector=Filter(
-                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-            )
-        )
+        qdrant.delete(collection_name=CHAT_COLLECTION,
+            points_selector=Filter(must=[
+                FieldCondition(key="user_id", match=MatchValue(value=user_id))
+            ]))
     except Exception as e:
         print(f"⚠️  Qdrant delete failed: {e}")
 
 def update_last_seen(user_id: str):
     try:
-        supabase_admin.table("profiles").update(
-            {"last_seen": "now()"}
-        ).eq("id", user_id).execute()
+        supabase_admin.table("profiles").update({"last_seen": "now()"}).eq("id", user_id).execute()
     except Exception:
         pass
 
@@ -308,6 +304,7 @@ You have 4 modes:
 4. REVIEW   → give constructive feedback on the trainee's written answer
 
 After explaining, ask if they want a quiz or exercise to test understanding.
+Keep responses concise.
 """
 
 # ══════════════════════════════════════════════════════════════
@@ -333,28 +330,32 @@ class ChatRequest(BaseModel):
 @app.post("/auth/signup")
 def signup(body: SignUpRequest):
     try:
-        res = supabase.auth.sign_up({
+        res = supabase_auth.auth.sign_up({
             "email": body.email, "password": body.password,
             "options": {"data": {"full_name": body.full_name}}
         })
         if not res.user:
             raise HTTPException(status_code=400, detail="Signup failed")
         return {"message": "Account created! Please check your email to confirm.", "user_id": res.user.id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/auth/signin")
 def signin(body: SignInRequest):
     try:
-        res = supabase.auth.sign_in_with_password({"email": body.email, "password": body.password})
+        res = supabase_auth.auth.sign_in_with_password({"email": body.email, "password": body.password})
         if not res.user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         update_last_seen(res.user.id)
-        return {
-            "access_token": res.session.access_token,
-            "user": {"id": res.user.id, "email": res.user.email,
+        token     = res.session.access_token
+        user_data = {"id": res.user.id, "email": res.user.email,
                      "full_name": res.user.user_metadata.get("full_name", "")}
-        }
+        del res
+        return {"access_token": token, "user": user_data}
+    except HTTPException:
+        raise
     except Exception as e:
         error_msg = str(e)
         if "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg:
@@ -368,14 +369,17 @@ def signin(body: SignInRequest):
 @app.post("/auth/resend-confirmation")
 def resend_confirmation(body: SignInRequest):
     try:
-        supabase.auth.resend({"type": "signup", "email": body.email})
+        supabase_auth.auth.resend({"type": "signup", "email": body.email})
         return {"message": "Confirmation email resent! Check your inbox."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not resend: {str(e)}")
 
 @app.post("/auth/signout")
 def signout(current_user=Depends(get_current_user)):
-    supabase.auth.sign_out()
+    try:
+        supabase_auth.auth.sign_out()
+    except Exception:
+        pass
     return {"message": "Signed out successfully"}
 
 @app.get("/auth/me")
@@ -384,13 +388,11 @@ def get_me(current_user=Depends(get_current_user)):
         profile = (supabase_admin.table("profiles")
                    .select("full_name, email, role, created_at, last_seen")
                    .eq("id", current_user.id).single().execute())
-        return {
-            "id": current_user.id, "email": current_user.email,
-            "full_name": profile.data.get("full_name", ""),
-            "role": profile.data.get("role", "trainee"),
-            "created_at": profile.data.get("created_at"),
-            "last_seen": profile.data.get("last_seen"),
-        }
+        data = profile.data
+        del profile
+        return {"id": current_user.id, "email": current_user.email,
+                "full_name": data.get("full_name", ""), "role": data.get("role", "trainee"),
+                "created_at": data.get("created_at"), "last_seen": data.get("last_seen")}
     except Exception:
         return {"id": current_user.id, "email": current_user.email,
                 "full_name": current_user.user_metadata.get("full_name", ""), "role": "trainee"}
@@ -406,25 +408,37 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    manual_context, sources = search_manual(user_message, n_results=4)
+    try:
+        manual_context, sources = search_manual(user_message, n_results=3)
 
-    system_content = SYSTEM_PROMPT
-    if manual_context:
-        system_content += f"\n\nRelevant manual excerpts:\n{manual_context}"
+        system_content = SYSTEM_PROMPT
+        if manual_context:
+            system_content += f"\n\nRelevant excerpts:\n{manual_context}"
+        del manual_context
 
-    history = load_user_history(user_id, limit=10)
-    messages_to_send = (
-        [SystemMessage(content=system_content)]
-        + history
-        + [HumanMessage(content=user_message)]
-    )
+        history          = load_user_history(user_id, limit=8)
+        messages_to_send = ([SystemMessage(content=system_content)]
+                            + history + [HumanMessage(content=user_message)])
+        del history
 
-    save_message(user_id, "human", user_message)
-    result      = get_agent().invoke({"messages": messages_to_send})
-    ai_response = result["messages"][-1].content
-    save_message(user_id, "ai", ai_response, sources=list(set(sources)))
+        save_message(user_id, "human", user_message)
 
-    return {"response": ai_response, "sources": list(set(sources))}
+        result      = get_agent().invoke({"messages": messages_to_send})
+        ai_response = result["messages"][-1].content
+        del result, messages_to_send
+
+        save_message(user_id, "ai", ai_response, sources=list(set(sources)))
+        response_data = {"response": ai_response, "sources": list(set(sources))}
+        del ai_response, sources
+
+        gc.collect()
+        return response_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        gc.collect()
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 @app.get("/chat/history")
 def get_history(current_user=Depends(get_current_user)):
@@ -438,24 +452,25 @@ def clear_history(current_user=Depends(get_current_user)):
 @app.get("/chat/stats")
 def get_stats(current_user=Depends(get_current_user)):
     try:
-        res = (supabase_admin.table("chat_messages")
-               .select("role", count="exact")
-               .eq("user_id", current_user.id)
-               .eq("role", "human").execute())
-        return {"total_questions": res.count or 0}
+        res   = (supabase_admin.table("chat_messages").select("role", count="exact")
+                 .eq("user_id", current_user.id).eq("role", "human").execute())
+        count = res.count or 0
+        del res
+        return {"total_questions": count}
     except Exception:
         return {"total_questions": 0}
 
 # ══════════════════════════════════════════════════════════════
-#  STARTUP — minimal, just init qdrant collection
+#  STARTUP
 # ══════════════════════════════════════════════════════════════
 
 @app.on_event("startup")
 def startup():
     print("✅ SRH Tutor API starting — port is bound.")
     init_qdrant_chat_collection()
+    gc.collect()
     print(f"📁 Frontend: {STATIC_DIR}")
-    print("⏳ Embedding model will load on first chat request.")
+    print("⏳ Embedding model loads on first chat request.")
 
 if __name__ == "__main__":
     import uvicorn
