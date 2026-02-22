@@ -36,7 +36,7 @@ from qdrant_client.models import (
     PayloadSchemaType, Filter, FieldCondition, MatchValue
 )
 # Pure ONNX embedder — no Rust, no PyTorch, works on Python 3.14
-from embedder import embed, embed_one
+from srh_embedder import embed, embed_one
 
 # ══════════════════════════════════════════════════════════════
 #  CONNECTIONS
@@ -82,14 +82,6 @@ _llm   = None
 _agent = None
 # embed_one() is imported from embedder.py above
 
-        try:
-            print("✅ Embedding model ready.")
-        except Exception as e:
-            print(f"❌ Embedding model failed to load: {e}")
-            raise RuntimeError(f"Embedding model unavailable: {e}")
-
-    """Embed a single string, returning a flat list."""
-
 def get_llm():
     global _llm
     if _llm is None:
@@ -131,7 +123,7 @@ def health():
 @app.get("/ready")
 def ready():
     """Returns whether the model is pre-warmed and ready for fast responses."""
-    from embedder import _session
+    from srh_embedder import _session
     model_ready = _session is not None
     return {
         "ready":    model_ready and _agent is not None,
@@ -220,15 +212,15 @@ def save_message(user_id: str, role: str, content: str, sources: list = []):
     except Exception as e:
         print(f"⚠️  Supabase insert failed: {e}")
     try:
-            vector = embed_one(content)
-            qdrant.upsert(collection_name=CHAT_COLLECTION, points=[
-                PointStruct(id=msg_id, vector=vector,
-                    payload={"user_id": user_id, "role": role,
-                             "content": content, "timestamp": time.time()})
-            ])
-            del vector
-        except Exception as e:
-            print(f"⚠️  Qdrant upsert failed: {e}")
+        vector = embed_one(content)
+        qdrant.upsert(collection_name=CHAT_COLLECTION, points=[
+            PointStruct(id=msg_id, vector=vector,
+                payload={"user_id": user_id, "role": role,
+                         "content": content, "timestamp": time.time()})
+        ])
+        del vector
+    except Exception as e:
+        print(f"⚠️  Qdrant upsert failed: {e}")
 
 def load_user_history(user_id: str, limit: int = 8):
     try:

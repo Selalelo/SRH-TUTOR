@@ -16,7 +16,7 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 import fitz  # PyMuPDF
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from embedder import embed  # Pure ONNX, no Rust needed
+from srh_embedder import embed  # Pure ONNX, no Rust needed
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIG

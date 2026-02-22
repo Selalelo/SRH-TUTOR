@@ -7,7 +7,7 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 print("📦 Pre-downloading ONNX embedding model during build...")
 try:
-    from embedder import embed_one
+    from srh_embedder import embed_one
     result = embed_one("warmup test")
     print(f"✅ ONNX model ready. Vector size: {len(result)}")
     del result
