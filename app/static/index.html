@@ -400,7 +400,28 @@
         <input type="password" id="signin-password" placeholder="••••••••" required/>
       </div>
       <button type="submit" class="btn-primary" id="signin-btn">Sign In</button>
+      <p style="text-align:center; margin-top:8px; font-size:0.82rem; color:var(--muted);">
+        Didn't get a confirmation email?
+        <a href="#" onclick="showResend()" style="color:var(--rose); font-weight:600; text-decoration:none;">Resend it</a>
+      </p>
     </form>
+
+    <!-- Resend Confirmation -->
+    <div id="resend-panel" class="auth-form hidden" style="gap:14px;">
+      <div class="auth-error"   id="resend-error"></div>
+      <div class="auth-success" id="resend-success"></div>
+      <p style="font-size:0.875rem; color:var(--muted); text-align:center; line-height:1.5;">
+        Enter your email and we'll send a fresh confirmation link.
+      </p>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="resend-email" placeholder="your@email.com" required/>
+      </div>
+      <button class="btn-primary" id="resend-btn" onclick="handleResend()">Send Confirmation Email</button>
+      <p style="text-align:center; font-size:0.82rem; color:var(--muted);">
+        <a href="#" onclick="showSignIn()" style="color:var(--rose); font-weight:600; text-decoration:none;">← Back to Sign In</a>
+      </p>
+    </div>
 
     <!-- Sign Up -->
     <form class="auth-form hidden" id="signup-form" onsubmit="handleSignUp(event)">
@@ -472,6 +493,44 @@
 const API = 'https://srh-tutor-1.onrender.com';  // empty = same origin; or set to 'http://localhost:8000' for dev
 let accessToken = localStorage.getItem('srh_token') || null;
 let currentUser = null;
+
+// ── Resend confirmation ───────────────────────────────────────
+function showResend() {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('signin-form').classList.add('hidden');
+  document.getElementById('signup-form').classList.add('hidden');
+  document.getElementById('resend-panel').classList.remove('hidden');
+}
+
+function showSignIn() {
+  document.getElementById('resend-panel').classList.add('hidden');
+  switchTab('signin');
+}
+
+async function handleResend() {
+  const btn   = document.getElementById('resend-btn');
+  const err   = document.getElementById('resend-error');
+  const suc   = document.getElementById('resend-success');
+  const email = document.getElementById('resend-email').value.trim();
+  err.style.display = 'none'; suc.style.display = 'none';
+  if (!email) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch(`${API}/auth/resend-confirmation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: '' })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed');
+    suc.textContent = data.message; suc.style.display = 'block';
+    setTimeout(() => showSignIn(), 3000);
+  } catch(ex) {
+    err.textContent = ex.message; err.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send Confirmation Email';
+  }
+}
 
 // ── Tab switcher ──────────────────────────────────────────────
 function switchTab(tab) {
@@ -656,6 +715,14 @@ function hideTyping() {
   if (el) el.remove();
 }
 
+async function checkReady() {
+  try {
+    const r = await fetch(`${API}/ready`);
+    const d = await r.json();
+    return d.ready === true;
+  } catch { return false; }
+}
+
 async function sendMessage() {
   const input = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
@@ -668,6 +735,16 @@ async function sendMessage() {
   showTyping();
 
   try {
+    // Check if model is still warming up
+    const ready = await checkReady();
+    if (!ready) {
+      hideTyping();
+      const warmMsg = appendBubble('ai',
+        '⏳ The AI model is still warming up (this takes ~30 seconds on first start). ' +
+        'Your message has been sent — please wait...');
+      showTyping();
+    }
+
     const r = await fetch(`${API}/chat`, {
       method: 'POST',
       headers: authHeaders(),
@@ -675,6 +752,11 @@ async function sendMessage() {
     });
     hideTyping();
     if (r.status === 401) { signOut(); return; }
+    if (!r.ok) {
+      const err = await r.json();
+      appendBubble('ai', `⚠️ ${err.detail || 'Something went wrong. Please try again.'}`);
+      return;
+    }
     const data = await r.json();
     const aiBubble = appendBubble('ai', data.response);
     if (data.sources && data.sources.length > 0) appendSources(aiBubble, data.sources);

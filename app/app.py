@@ -7,7 +7,7 @@ os.environ["TOKENIZERS_PARALLELISM"]  = "false"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"]  = "error"
 
-import warnings, logging, gc, time, uuid
+import warnings, logging, gc, time, uuid, threading
 warnings.filterwarnings("ignore")
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
@@ -126,6 +126,15 @@ def serve_frontend():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/ready")
+def ready():
+    """Returns whether the model is pre-warmed and ready for fast responses."""
+    return {
+        "ready":    _embedder is not None and _agent is not None,
+        "embedder": _embedder is not None,
+        "agent":    _agent is not None,
+    }
 
 # ══════════════════════════════════════════════════════════════
 #  QDRANT INIT
@@ -464,13 +473,27 @@ def get_stats(current_user=Depends(get_current_user)):
 #  STARTUP
 # ══════════════════════════════════════════════════════════════
 
+def _prewarm():
+    """Load heavy models in background so first chat request is fast."""
+    try:
+        print("🔌 Pre-warming embedding model in background...")
+        get_embedder()
+        print("🔌 Pre-warming LLM + agent in background...")
+        get_agent()
+        gc.collect()
+        print("✅ Pre-warm complete — ready for chat.")
+    except Exception as e:
+        print(f"⚠️  Pre-warm failed (will load on first request): {e}")
+
 @app.on_event("startup")
 def startup():
     print("✅ SRH Tutor API starting — port is bound.")
     init_qdrant_chat_collection()
-    gc.collect()
+    # Pre-warm models in background thread so port stays responsive
+    t = threading.Thread(target=_prewarm, daemon=True)
+    t.start()
     print(f"📁 Frontend: {STATIC_DIR}")
-    print("⏳ Embedding model loads on first chat request.")
+    print("⏳ Models loading in background...")
 
 if __name__ == "__main__":
     import uvicorn
