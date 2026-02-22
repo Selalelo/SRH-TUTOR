@@ -57,7 +57,8 @@ qdrant = QdrantClient(
     url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY")
 )
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+# Loaded lazily on first startup so port binds before heavy model loads
+embedder = None
 
 MANUAL_COLLECTION = "srh_manual"
 CHAT_COLLECTION   = "srh_chat"
@@ -549,11 +550,17 @@ def get_stats(current_user=Depends(get_current_user)):
 
 @app.on_event("startup")
 def startup():
+    global embedder
+    print("🚀 Server started — port is bound.")
+    print("🔌 Loading embedding model...")
+    embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    print("✅ Embedding model loaded.")
     init_qdrant_chat_collection()
-    print("✅ SRH Tutor API is running.")
+    print("✅ SRH Tutor API is ready.")
     print(f"📁 Serving frontend from: {STATIC_DIR}")
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))  # Render sets PORT automatically
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🚀 Binding to host=0.0.0.0 port={port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
