@@ -58,22 +58,35 @@ except Exception as e:
 # ══════════════════════════════════════════════════════════════
 
 def init_collection():
+    """
+    Returns: 'add'    — collection exists, append new doc to it
+             'fresh'  — collection deleted and recreated
+             False    — user cancelled
+    """
     existing = [c.name for c in qdrant.get_collections().collections]
     if COLLECTION_NAME in existing:
-        print(f"\n⚠️  Collection '{COLLECTION_NAME}' already exists in Qdrant.")
-        answer = input("   Re-ingest? This will DELETE existing data (yes/no): ").strip().lower()
-        if answer == "yes":
+        count = qdrant.count(collection_name=COLLECTION_NAME).count
+        print(f"\n📦 Collection '{COLLECTION_NAME}' already exists ({count} vectors).")
+        print("   Options:")
+        print("   [1] ADD  — append this document (keep existing data)")
+        print("   [2] REPLACE — delete everything and start fresh")
+        print("   [3] CANCEL")
+        answer = input("   Choose 1, 2, or 3: ").strip()
+        if answer == "1":
+            print("➕ Adding new document to existing collection...")
+            return "add"
+        elif answer == "2":
             qdrant.delete_collection(COLLECTION_NAME)
-            print(f"🗑️  Deleted old collection '{COLLECTION_NAME}'.")
+            print(f"🗑️  Deleted old collection.")
         else:
-            print("⏭️  Keeping existing data. Exiting.")
+            print("⏭️  Cancelled.")
             return False
     qdrant.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
     )
     print(f"✅ Collection '{COLLECTION_NAME}' created.")
-    return True
+    return "fresh"
 
 # ══════════════════════════════════════════════════════════════
 #  STEP 2 — Extract Text from PDF
@@ -130,7 +143,7 @@ def chunk_pages(pages):
 #  STEP 4 — Embed and Upload to Qdrant
 # ══════════════════════════════════════════════════════════════
 
-def upload_chunks(chunks):
+def upload_chunks(chunks, source_label: str = "SPLA031 Sexual & Reproductive Health Training Manual 2024"):
     total    = len(chunks)
     uploaded = 0
     failed   = 0
@@ -157,7 +170,7 @@ def upload_chunks(chunks):
                     "text":     batch[j]["text"],
                     "page":     batch[j]["page"],
                     "chunk_id": batch[j]["chunk_id"],
-                    "source":   "SPLA031 Sexual & Reproductive Health Training Manual 2024"
+                    "source":   source_label
                 }
             )
             for j in range(len(batch))
@@ -208,7 +221,7 @@ def verify():
 
 if __name__ == "__main__":
     print("=" * 55)
-    print("  📚 SRH Manual Ingestion — SPLA031")
+    print("  📚 SPLA Document Ingestion Tool")
     print(f"  Model : all-MiniLM-L6-v2 (ONNX)")
     print("=" * 55)
 
@@ -225,13 +238,21 @@ if __name__ == "__main__":
     if not pdf_path.lower().endswith(".pdf"):
         print("⚠️  Warning: file does not end in .pdf — continuing anyway...")
 
-    if init_collection():
+    mode = init_collection()
+    if mode:
+        # Ask for a friendly document label (used in source citations)
+        default_label = os.path.splitext(os.path.basename(pdf_path))[0]
+        label = input(f"\nDocument label for citations (default: {default_label}):\n> ").strip()
+        if not label:
+            label = default_label
+
         pages    = extract_pdf(pdf_path)
         chunks   = chunk_pages(pages)
-        uploaded = upload_chunks(chunks)
+        uploaded = upload_chunks(chunks, source_label=label)
         if uploaded > 0:
             verify()
-            print("\n🎉 Ingestion complete! Start the tutor with:")
+            action = "Added to" if mode == "add" else "Created"
+            print(f"\n🎉 {action} collection with {uploaded} chunks from '{label}'!")
             print("   uvicorn app:app --host 0.0.0.0 --port 8000 --reload\n")
         else:
             print("\n❌ No chunks uploaded. Check errors above.")
