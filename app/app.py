@@ -35,8 +35,8 @@ from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
     PayloadSchemaType, Filter, FieldCondition, MatchValue
 )
-# fastembed is ~50MB vs sentence-transformers ~400MB — critical for free tier
-from fastembed import TextEmbedding
+# Pure ONNX embedder — no Rust, no PyTorch, works on Python 3.14
+from embedder import embed, embed_one
 
 # ══════════════════════════════════════════════════════════════
 #  CONNECTIONS
@@ -78,28 +78,17 @@ def collection_exists(name: str) -> bool:
 #  LAZY SINGLETONS
 # ══════════════════════════════════════════════════════════════
 
-_embedder = None
-_llm      = None
-_agent    = None
+_llm   = None
+_agent = None
+# embed_one() is imported from embedder.py above
 
-def get_embedder():
-    global _embedder
-    if _embedder is None:
-        print("🔌 Loading embedding model (fastembed)...")
         try:
-            # fastembed uses ONNX runtime — only ~50MB, no torch needed
-            _embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
             print("✅ Embedding model ready.")
         except Exception as e:
             print(f"❌ Embedding model failed to load: {e}")
             raise RuntimeError(f"Embedding model unavailable: {e}")
-    return _embedder
 
-def embed(text: str) -> list:
     """Embed a single string, returning a flat list."""
-    embedder = get_embedder()
-    vectors = list(embedder.embed([text]))
-    return vectors[0].tolist()
 
 def get_llm():
     global _llm
@@ -142,9 +131,11 @@ def health():
 @app.get("/ready")
 def ready():
     """Returns whether the model is pre-warmed and ready for fast responses."""
+    from embedder import _session
+    model_ready = _session is not None
     return {
-        "ready":    _embedder is not None and _agent is not None,
-        "embedder": _embedder is not None,
+        "ready":    model_ready and _agent is not None,
+        "embedder": model_ready,
         "agent":    _agent is not None,
     }
 
@@ -196,7 +187,7 @@ def search_manual(query: str, n_results: int = 3):
         raise HTTPException(status_code=503,
             detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
     try:
-        query_vector = embed(query)
+        query_vector = embed_one(query)
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector, limit=n_results, with_payload=True
@@ -228,10 +219,8 @@ def save_message(user_id: str, role: str, content: str, sources: list = []):
         }).execute()
     except Exception as e:
         print(f"⚠️  Supabase insert failed: {e}")
-    # Only embed to Qdrant if model already loaded — don't trigger load just for history
-    if _embedder is not None:
-        try:
-            vector = embed(content)
+    try:
+            vector = embed_one(content)
             qdrant.upsert(collection_name=CHAT_COLLECTION, points=[
                 PointStruct(id=msg_id, vector=vector,
                     payload={"user_id": user_id, "role": role,
@@ -487,7 +476,7 @@ def _prewarm():
     """Load heavy models in background so first chat request is fast."""
     try:
         print("🔌 Pre-warming embedding model in background...")
-        embed("warmup test")
+        embed_one("warmup test")
         print("🔌 Pre-warming LLM + agent in background...")
         get_agent()
         gc.collect()

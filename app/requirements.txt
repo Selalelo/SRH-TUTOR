@@ -3,10 +3,14 @@ uvicorn[standard]
 python-dotenv
 supabase
 qdrant-client
-fastembed
 langchain-core
 langchain-groq
 langgraph
 pydantic
 python-multipart
 pymupdf
+# Embedding — pure Python ONNX, no Rust compilation needed
+onnxruntime
+huggingface-hub
+tokenizers
+numpy

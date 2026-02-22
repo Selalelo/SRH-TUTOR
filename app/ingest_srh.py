@@ -16,17 +16,16 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 import fitz  # PyMuPDF
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from fastembed import TextEmbedding
+from embedder import embed  # Pure ONNX, no Rust needed
 
 # ══════════════════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════════════════
 COLLECTION_NAME = "srh_manual"
-VECTOR_SIZE     = 384     # BAAI/bge-small-en-v1.5 output size
+VECTOR_SIZE     = 384     # all-MiniLM-L6-v2 ONNX output size
 CHUNK_SIZE      = 500     # characters per chunk
 CHUNK_OVERLAP   = 100     # overlap between chunks
 BATCH_SIZE      = 50      # chunks per Qdrant upload batch
-MODEL_NAME      = "BAAI/bge-small-en-v1.5"
 
 # ══════════════════════════════════════════════════════════════
 #  CONNECTIONS
@@ -45,10 +44,9 @@ except Exception as e:
     print("   Check QDRANT_URL and QDRANT_API_KEY in your .env file.")
     sys.exit(1)
 
-print(f"🔌 Loading embedding model ({MODEL_NAME})...")
+print("🔌 Loading ONNX embedding model...")
 try:
-    embedder = TextEmbedding(MODEL_NAME)
-    test = list(embedder.embed(["test"]))
+    test = embed(["test"])
     print(f"✅ Embedding model ready. Vector size: {len(test[0])}")
     del test
 except Exception as e:
@@ -142,9 +140,9 @@ def upload_chunks(chunks):
         batch = chunks[i : i + BATCH_SIZE]
         texts = [c["text"] for c in batch]
 
-        # Embed with fastembed
+        # Embed with ONNX
         try:
-            vectors = [v.tolist() for v in embedder.embed(texts)]
+            vectors = embed(texts)
         except Exception as e:
             print(f"\n   ⚠️  Embedding failed for batch {i}–{i+len(batch)}: {e}")
             failed += len(batch)
@@ -211,7 +209,7 @@ def verify():
 if __name__ == "__main__":
     print("=" * 55)
     print("  📚 SRH Manual Ingestion — SPLA031")
-    print(f"  Model : {MODEL_NAME}")
+    print(f"  Model : all-MiniLM-L6-v2 (ONNX)")
     print("=" * 55)
 
     # Get PDF path from argument or prompt
