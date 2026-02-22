@@ -3,10 +3,10 @@ uvicorn[standard]
 python-dotenv
 supabase
 qdrant-client
-sentence-transformers
+fastembed
 langchain-core
 langchain-groq
 langgraph
 pydantic
 python-multipart
-torch --index-url https://download.pytorch.org/whl/cpu
+pymupdf
