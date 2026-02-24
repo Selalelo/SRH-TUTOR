@@ -116,9 +116,6 @@ Responsive: Mobile-first, 6 breakpoints
 **Infrastructure**
 ```yaml
 Hosting:    Render.com
-CI/CD:      GitHub Actions
-Monitoring: Health checks, readiness probes
-Caching:    In-memory + browser localStorage
 ```
 
 ---
@@ -325,6 +322,44 @@ LIMIT 20;
 ```
 
 **Data Flow:** User query → ONNX embed → Qdrant semantic search → Top 3 chunks injected into system prompt → Groq LLM generates cited response → Saved to Supabase + Qdrant
+
+---
+## 🏗️ Architecture
+
+### System Design
+```mermaid
+sequenceDiagram
+    participant Student
+    participant Frontend
+    participant API
+    participant Qdrant
+    participant Groq
+    participant Supabase
+
+    Student->>Frontend: Ask question
+    Frontend->>API: POST /chat
+    API->>Qdrant: Search similar content
+    Qdrant-->>API: Relevant excerpts
+    API->>Groq: Generate with context
+    Groq-->>API: AI response
+    API->>Supabase: Save conversation
+    API-->>Frontend: Response + sources
+    Frontend-->>Student: Display answer
+```
+
+### Learning Flow
+```mermaid
+graph LR
+    A[Student Query] --> B{Mode Selection}
+    B --> C[Explain Mode]
+    B --> D[Quiz Mode]
+    B --> E[Case Study]
+    B --> F[Review Mode]
+    C --> G[Concept Understanding]
+    D --> H[Self Assessment]
+    E --> I[Clinical Application]
+    F --> J[Feedback & Improvement]
+```
 
 ---
 
