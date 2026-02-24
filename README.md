@@ -1,11 +1,11 @@
 # 🏥 SPLA031 — Physiology Module Tutor
 ### University of Limpopo · Department of Physiology
 
-![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge&logo=render)
-![Python](https://img.shields.io/badge/Python-3.14+-blue?style=for-the-badge&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi)
-![Groq](https://img.shields.io/badge/Groq-LLM-orange?style=for-the-badge&logo=groq)
-![License](https://img.shields.io/badge/License-Academic-lightgrey?style=for-the-badge)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge&logo=render)](https://srh-tutor-1.onrender.com)
+[![Python](https://img.shields.io/badge/Python-3.14+-blue?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Groq](https://img.shields.io/badge/Groq-LLM-orange?style=for-the-badge&logo=groq)](https://console.groq.com)
+[![License](https://img.shields.io/badge/License-Academic-lightgrey?style=for-the-badge)](https://ul.ac.za)
 
 ---
 
@@ -21,8 +21,6 @@
 - [Deployment](#-deployment)
 - [Project Structure](#-project-structure)
 - [Contributing](#-contributing)
-- [Team](#-team)
-- [License](#-license)
 
 ---
 
@@ -34,7 +32,7 @@ An intelligent AI tutoring system built for the **University of Limpopo's Depart
 
 ### 🎯 Purpose
 
-- Provide on-demand physiology tutoring aligned to the SPLA CODE curriculum
+- Provide on-demand physiology tutoring aligned to the SPLA 031 curriculum
 - Reduce lecturer workload for routine concept queries
 - Improve student understanding through RAG-grounded, cited answers
 - Enable 24/7 access to course materials from any device
@@ -54,7 +52,7 @@ An intelligent AI tutoring system built for the **University of Limpopo's Depart
 
 | Feature | Description |
 |---|---|
-| Complete Syllabus Coverage | All SPLA CODE lecture notes ingested and searchable |
+| Complete Syllabus Coverage | All SPLA 031 lecture notes ingested and searchable |
 | Source Attribution | Every answer cites the specific source and page number |
 | Multi-format Support | Textbooks, lecture slides, and practical manuals |
 
@@ -137,8 +135,8 @@ Caching:    In-memory + browser localStorage
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/spla-code-tutor.git
-cd spla-code-tutor
+git clone https://github.com/yourusername/spla-031-tutor.git
+cd spla-031-tutor
 ```
 
 ### 2. Configure Environment Variables
@@ -197,8 +195,8 @@ pip install -r requirements.txt
 ### 5. Ingest Course Materials
 
 ```bash
-# Ingest SPLA CODE lecture notes
-python ingest_srh.py "SPLA_CODE_Lecture_Notes_2024.pdf"
+# Ingest SPLA 031 lecture notes
+python ingest_srh.py "SPLA_031_Lecture_Notes_2024.pdf"
 
 # Ingest textbook chapters
 python ingest_srh.py "Guyton_Chapter_10_Cardiac.pdf"
@@ -207,7 +205,7 @@ python ingest_srh.py "Guyton_Chapter_10_Cardiac.pdf"
 python ingest_srh.py "Physiology_Practical_Manual.pdf"
 ```
 
-> The script will prompt you to **ADD** (append to existing collection) or **REPLACE** (start fresh), and ask for a citation label (e.g. `SPLA CODE Lecture 5 – Heart Physiology`).
+> The script will prompt you to **ADD** (append to existing collection) or **REPLACE** (start fresh), and ask for a citation label (e.g. `SPLA 031 Lecture 5 – Heart Physiology`).
 
 ### 6. Run Locally
 
@@ -262,9 +260,9 @@ Practical Prep  →  "Interpret these blood gas values: pH 7.25, pCO2 60"
 
 ```bash
 # Append new material (preserves existing data)
-python ingest_srh.py "SPLA_CODE_Week5_Cardiovascular.pdf"
+python ingest_srh.py "SPLA_031_Week5_Cardiovascular.pdf"
 # Select option 1: ADD to existing collection
-# Label: "SPLA CODE Lecture 5 - Heart Physiology"
+# Label: "SPLA 031 Lecture 5 - Heart Physiology"
 
 # Full refresh (new semester)
 python ingest_srh.py "Updated_Curriculum_2025.pdf"
@@ -368,7 +366,7 @@ LIMIT 20;
 // Response
 {
   "response": "The cardiac cycle consists of... [detailed explanation with citations]",
-  "sources": ["SPLA CODE Lecture 5, Page 12", "Guyton & Hall Chapter 9, Page 145"]
+  "sources": ["SPLA 031 Lecture 5, Page 12", "Guyton & Hall Chapter 9, Page 145"]
 }
 ```
 
@@ -425,7 +423,7 @@ Network: University LAN with outbound HTTPS
 ## 📁 Project Structure
 
 ```
-spla-code-tutor/
+spla-031-tutor/
 ├── app.py                  # Main FastAPI application — routes, agent, chat logic
 ├── ingest_srh.py           # PDF ingestion tool — chunks and uploads to Qdrant
 ├── srh_embedder.py         # ONNX embedding wrapper (embed / embed_one)
@@ -454,8 +452,8 @@ spla-code-tutor/
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/your-username/spla-code-tutor.git
-cd spla-code-tutor
+git clone https://github.com/your-username/spla-031-tutor.git
+cd spla-031-tutor
 
 # 2. Create a feature branch
 git checkout -b feature/your-feature-name
@@ -476,7 +474,7 @@ git push origin feature/your-feature-name
 | Contributor | Contribution |
 |---|---|
 | Department of Physiology | Content expertise |
-| SPLA CODE Students | Beta testing and feedback |
+| SPLA 031 Students | Beta testing and feedback |
 | Groq | Free academic LLM access |
 | Qdrant | Vector database sponsorship |
 | Supabase | Open source credits |
@@ -498,6 +496,6 @@ git push origin feature/your-feature-name
 
 [Live Demo](https://srh-tutor-1.onrender.com) · [Report a Bug](../../issues/new?template=bug_report.md) · [Request a Feature](../../issues/new?template=feature_request.md)
 
-*Made with ❤️ for SPLA CODE students at the University of Limpopo*
+*Made with ❤️ for SPLA 031 students at the University of Limpopo*
 
 </div>
