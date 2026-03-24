@@ -26,7 +26,7 @@
 
 ## 🏛️ About
 
-An intelligent AI tutoring system built for the **University of Limpopo's Department of Physiology** to support the **SPLA031** module. This system provides students with 24/7 access to course materials through natural language conversations, delivering accurate, source-cited answers from official lecture notes, textbooks, and practical manuals.
+An intelligent AI tutoring system built for the **University of Limpopo's Department of Physiology students** to support the **SPLA031** module. This system provides students with 24/7 access to course materials through natural language conversations, delivering accurate, source-cited answers from official lecture notes, textbooks, and practical manuals.
 
 > *"Empowering physiology education through intelligent tutoring systems"*
 
