@@ -253,9 +253,10 @@
   /* Messages */
   #messages {
     flex: 1; overflow-y: auto;
-    padding: 20px 16px;
-    display: flex; flex-direction: column; gap: 16px;
+    padding: 24px 18px;
+    display: flex; flex-direction: column; gap: 18px;
     scroll-behavior: smooth;
+    min-height: 0;
   }
 
   /* Quick commands */
@@ -279,14 +280,14 @@
   .quick-cmd.cdl:hover { border-color: var(--cdl); background: #f0faf8; }
 
   /* Bubbles */
-  .bubble-wrap { display: flex; flex-direction: column; max-width: 84%; }
+  .bubble-wrap { display: flex; flex-direction: column; max-width: 88%; }
   .bubble-wrap.user { align-self: flex-end; align-items: flex-end; }
   .bubble-wrap.ai   { align-self: flex-start; align-items: flex-start; }
 
   .bubble {
-    padding: 13px 16px;
+    padding: 15px 18px;
     border-radius: 18px;
-    font-size: 0.91rem; line-height: 1.65;
+    font-size: 0.98rem; line-height: 1.7;
     word-break: break-word;
   }
   .bubble-wrap.user .bubble {
@@ -352,6 +353,17 @@
     border-top: 1px solid var(--sand);
   }
   .input-row { display: flex; gap: 10px; align-items: flex-end; }
+  .input-hint {
+    font-size: 0.72rem; color: var(--muted);
+    margin-top: 6px; text-align: center;
+    letter-spacing: 0.2px;
+  }
+  .input-hint kbd {
+    background: var(--sand); border: 1px solid var(--sand-dk);
+    border-radius: 4px; padding: 1px 6px;
+    font-family: 'Outfit', sans-serif; font-size: 0.7rem;
+    color: var(--ink-lt);
+  }
   #user-input {
     flex: 1; padding: 13px 16px;
     border: 1.5px solid var(--sand-dk);
@@ -447,6 +459,11 @@
     .quick-cmd       { font-size: 0.72rem; padding: 6px 11px; }
     .welcome-card    { padding: 18px 16px; }
     .welcome-card h3 { font-size: 1.05rem; }
+    .input-hint      { display: none; }
+  }
+
+  @media (max-width: 480px) {
+    .input-hint { display: none; }
   }
 
   @media (min-width: 360px) and (max-width: 480px) {
@@ -469,18 +486,20 @@
     .auth-card    { max-width: 460px; padding: 40px 36px; }
     .brand h1     { font-size: 2.2rem; }
     .brand-icon   { width: 76px; height: 76px; font-size: 34px; }
-    #chat-screen  { max-width: 720px; margin: 0 auto; }
-    .bubble-wrap  { max-width: 78%; }
-    #messages     { padding: 24px 24px; }
-    .module-selector { padding: 14px 24px; gap: 12px; }
-    .mod-pill        { font-size: 0.85rem; padding: 9px 20px; }
-    .topbar       { padding: 14px 24px; }
-    .topbar-info h2 { font-size: 1.1rem; }
-    .input-area   { padding: 12px 24px 22px; }
-    #user-input   { font-size: 1rem; }
-    .quick-commands { padding: 0 24px 12px; gap: 10px; flex-wrap: wrap; }
-    .quick-cmd      { font-size: 0.83rem; }
-    .welcome-card   { max-width: 500px; padding: 32px 28px; }
+    #chat-screen  { max-width: 960px; margin: 0 auto; }
+    .bubble-wrap  { max-width: 82%; }
+    #messages     { padding: 28px 28px; gap: 20px; }
+    .bubble       { font-size: 1rem; padding: 16px 20px; }
+    .module-selector { padding: 14px 28px; gap: 12px; }
+    .mod-pill        { font-size: 0.9rem; padding: 10px 22px; }
+    .topbar       { padding: 14px 28px; }
+    .topbar-info h2 { font-size: 1.15rem; }
+    .input-area   { padding: 14px 28px 22px; }
+    #user-input   { font-size: 1.02rem; min-height: 56px; }
+    .send-btn     { width: 56px; height: 56px; }
+    .quick-commands { padding: 0 28px 14px; gap: 10px; flex-wrap: wrap; }
+    .quick-cmd      { font-size: 0.86rem; padding: 8px 16px; }
+    .welcome-card   { max-width: 560px; padding: 32px 28px; }
     .welcome-card h3 { font-size: 1.35rem; }
   }
 
@@ -490,23 +509,25 @@
     .brand h1     { font-size: 2.4rem; }
     .brand-icon   { width: 80px; height: 80px; font-size: 36px; }
     .brand        { margin-bottom: 40px; }
-    #chat-screen  { max-width: 820px; margin: 0 auto;
+    #chat-screen  { max-width: 1180px; margin: 0 auto;
                     box-shadow: 0 0 60px rgba(28,23,20,0.1); }
-    .bubble-wrap  { max-width: 72%; }
-    #messages     { padding: 28px 32px; gap: 20px; }
-    .module-selector { padding: 16px 32px; gap: 14px; }
-    .mod-pill        { font-size: 0.88rem; padding: 10px 22px; }
-    .topbar         { padding: 16px 32px; }
-    .topbar-info h2 { font-size: 1.15rem; }
-    .topbar-icon    { width: 44px; height: 44px; font-size: 20px; }
-    .input-area     { padding: 14px 32px 24px; }
-    #user-input     { font-size: 1rem; border-radius: 16px; }
-    .send-btn       { width: 54px; height: 54px; border-radius: 16px; }
-    .quick-commands { padding: 0 32px 14px; gap: 10px; flex-wrap: wrap; }
-    .quick-cmd      { font-size: 0.85rem; padding: 8px 16px; }
-    .welcome-card   { max-width: 560px; padding: 36px 32px; }
-    .welcome-card h3 { font-size: 1.45rem; }
-    .welcome-card p  { font-size: 0.92rem; }
+    .bubble-wrap  { max-width: 78%; }
+    #messages     { padding: 32px 44px; gap: 22px; }
+    .bubble       { font-size: 1.02rem; padding: 16px 20px; line-height: 1.7; }
+    .module-selector { padding: 18px 44px; gap: 14px; }
+    .mod-pill        { font-size: 0.92rem; padding: 11px 24px; }
+    .topbar         { padding: 18px 44px; }
+    .topbar-info h2 { font-size: 1.2rem; }
+    .topbar-icon    { width: 46px; height: 46px; font-size: 22px; }
+    .input-area     { padding: 16px 44px 26px; }
+    #user-input     { font-size: 1.05rem; border-radius: 16px; min-height: 58px; padding: 16px 20px; }
+    .send-btn       { width: 58px; height: 58px; border-radius: 16px; }
+    .quick-commands { padding: 0 44px 16px; gap: 10px; flex-wrap: wrap; }
+    .quick-cmd      { font-size: 0.88rem; padding: 9px 18px; }
+    .welcome-card   { max-width: 640px; padding: 40px 36px; }
+    .welcome-card h3 { font-size: 1.5rem; }
+    .welcome-card p  { font-size: 0.98rem; }
+    .icon-btn       { width: 40px; height: 40px; font-size: 16px; }
     .btn-primary:hover  { box-shadow: 0 10px 28px rgba(192,57,75,0.38); }
     .mod-pill:hover:not(.active-srh):not(.active-cdl) {
       border-color: var(--mod); color: var(--mod-dk); background: var(--white);
@@ -514,12 +535,24 @@
   }
 
   @media (min-width: 1280px) {
-    #chat-screen  { max-width: 900px; }
-    #messages     { padding: 32px 40px; }
-    .topbar       { padding: 18px 40px; }
-    .input-area   { padding: 16px 40px 28px; }
-    .quick-commands { padding: 0 40px 14px; }
-    .module-selector { padding: 16px 40px; }
+    #chat-screen  { max-width: 1320px; }
+    #messages     { padding: 36px 56px; gap: 24px; }
+    .bubble-wrap  { max-width: 76%; }
+    .bubble       { font-size: 1.05rem; padding: 18px 22px; }
+    .topbar       { padding: 20px 56px; }
+    .input-area   { padding: 18px 56px 30px; }
+    .quick-commands { padding: 0 56px 16px; }
+    .module-selector { padding: 18px 56px; }
+    .welcome-card   { max-width: 700px; padding: 44px 40px; }
+  }
+
+  @media (min-width: 1600px) {
+    #chat-screen  { max-width: 1480px; }
+    #messages     { padding: 40px 72px; }
+    .topbar       { padding: 22px 72px; }
+    .input-area   { padding: 20px 72px 32px; }
+    .quick-commands { padding: 0 72px 18px; }
+    .module-selector { padding: 20px 72px; }
   }
 
   @media (hover: none) {
@@ -617,8 +650,8 @@
       <span id="user-label">Loading…</span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" onclick="clearHistory()" title="Clear chat">🗑️</button>
-      <button class="icon-btn" onclick="signOut()" title="Sign out">🚪</button>
+      <button class="icon-btn" onclick="clearHistory()" title="Clear chat history" aria-label="Clear chat history">🗑️</button>
+      <button class="icon-btn" onclick="signOut()" title="Sign out" aria-label="Sign out">🚪</button>
     </div>
   </div>
 
@@ -649,13 +682,15 @@
   <div class="input-area">
     <div class="input-row">
       <textarea id="user-input" placeholder="Ask about SRH topics…" rows="1"
+        aria-label="Type your question"
         onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-      <button class="send-btn" id="send-btn" onclick="sendMessage()">
+      <button class="send-btn" id="send-btn" onclick="sendMessage()" title="Send message (Enter)" aria-label="Send message">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
       </button>
     </div>
+    <p class="input-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</p>
   </div>
 </div>
 
