@@ -486,15 +486,15 @@
     .auth-card    { max-width: 460px; padding: 40px 36px; }
     .brand h1     { font-size: 2.2rem; }
     .brand-icon   { width: 76px; height: 76px; font-size: 34px; }
-    #chat-screen  { max-width: 960px; margin: 0 auto; }
+    #chat-screen  { max-width: 100%; margin: 0; }
     .bubble-wrap  { max-width: 82%; }
-    #messages     { padding: 28px 28px; gap: 20px; }
-    .bubble       { font-size: 1rem; padding: 16px 20px; }
-    .module-selector { padding: 14px 28px; gap: 12px; }
-    .mod-pill        { font-size: 0.9rem; padding: 10px 22px; }
-    .topbar       { padding: 14px 28px; }
+    #messages     { padding: 20px 28px; gap: 14px; }
+    .bubble       { font-size: 1rem; padding: 14px 18px; }
+    .module-selector { padding: 10px 28px; gap: 12px; }
+    .mod-pill        { font-size: 0.9rem; padding: 8px 20px; }
+    .topbar       { padding: 10px 28px; }
     .topbar-info h2 { font-size: 1.15rem; }
-    .input-area   { padding: 14px 28px 22px; }
+    .input-area   { padding: 10px 28px 14px; }
     #user-input   { font-size: 1.02rem; min-height: 56px; }
     .send-btn     { width: 56px; height: 56px; }
     .quick-commands { padding: 0 28px 14px; gap: 10px; flex-wrap: wrap; }
@@ -509,17 +509,16 @@
     .brand h1     { font-size: 2.4rem; }
     .brand-icon   { width: 80px; height: 80px; font-size: 36px; }
     .brand        { margin-bottom: 40px; }
-    #chat-screen  { max-width: 1180px; margin: 0 auto;
-                    box-shadow: 0 0 60px rgba(28,23,20,0.1); }
+    #chat-screen  { max-width: 100%; margin: 0; }
     .bubble-wrap  { max-width: 78%; }
-    #messages     { padding: 32px 44px; gap: 22px; }
-    .bubble       { font-size: 1.02rem; padding: 16px 20px; line-height: 1.7; }
-    .module-selector { padding: 18px 44px; gap: 14px; }
-    .mod-pill        { font-size: 0.92rem; padding: 11px 24px; }
-    .topbar         { padding: 18px 44px; }
+    #messages     { padding: 22px 44px; gap: 14px; }
+    .bubble       { font-size: 1.02rem; padding: 14px 18px; line-height: 1.65; }
+    .module-selector { padding: 12px 44px; gap: 14px; }
+    .mod-pill        { font-size: 0.92rem; padding: 9px 22px; }
+    .topbar         { padding: 12px 44px; }
     .topbar-info h2 { font-size: 1.2rem; }
-    .topbar-icon    { width: 46px; height: 46px; font-size: 22px; }
-    .input-area     { padding: 16px 44px 26px; }
+    .topbar-icon    { width: 42px; height: 42px; font-size: 20px; }
+    .input-area     { padding: 12px 44px 16px; }
     #user-input     { font-size: 1.05rem; border-radius: 16px; min-height: 58px; padding: 16px 20px; }
     .send-btn       { width: 58px; height: 58px; border-radius: 16px; }
     .quick-commands { padding: 0 44px 16px; gap: 10px; flex-wrap: wrap; }
@@ -535,24 +534,25 @@
   }
 
   @media (min-width: 1280px) {
-    #chat-screen  { max-width: 1320px; }
-    #messages     { padding: 36px 56px; gap: 24px; }
-    .bubble-wrap  { max-width: 76%; }
-    .bubble       { font-size: 1.05rem; padding: 18px 22px; }
-    .topbar       { padding: 20px 56px; }
-    .input-area   { padding: 18px 56px 30px; }
-    .quick-commands { padding: 0 56px 16px; }
-    .module-selector { padding: 18px 56px; }
+    #chat-screen  { max-width: 100%; }
+    #messages     { padding: 24px 64px; gap: 16px; }
+    .bubble-wrap  { max-width: 72%; }
+    .bubble       { font-size: 1.05rem; padding: 16px 20px; }
+    .topbar       { padding: 12px 64px; }
+    .input-area   { padding: 12px 64px 18px; }
+    .quick-commands { padding: 0 64px 12px; }
+    .module-selector { padding: 12px 64px; }
     .welcome-card   { max-width: 700px; padding: 44px 40px; }
   }
 
   @media (min-width: 1600px) {
-    #chat-screen  { max-width: 1480px; }
-    #messages     { padding: 40px 72px; }
-    .topbar       { padding: 22px 72px; }
-    .input-area   { padding: 20px 72px 32px; }
-    .quick-commands { padding: 0 72px 18px; }
-    .module-selector { padding: 20px 72px; }
+    #chat-screen  { max-width: 100%; }
+    #messages     { padding: 28px 96px; gap: 18px; }
+    .bubble-wrap  { max-width: 68%; }
+    .topbar       { padding: 14px 96px; }
+    .input-area   { padding: 14px 96px 20px; }
+    .quick-commands { padding: 0 96px 14px; }
+    .module-selector { padding: 14px 96px; }
   }
 
   @media (hover: none) {
