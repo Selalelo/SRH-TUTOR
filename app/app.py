@@ -258,13 +258,14 @@ def save_message(user_id: str, role: str, content: str, sources: list = []):
     except Exception as e:
         print(f"⚠️  Qdrant upsert failed: {e}")
 
-def load_user_history(user_id: str, limit: int = 8):
+def load_user_history(user_id: str, limit: int = 30):
     try:
         res = (supabase_admin.table("chat_messages")
                .select("role, content").eq("user_id", user_id)
-               .order("created_at", desc=False).limit(limit).execute())
+               .order("created_at", desc=True).limit(limit).execute())
+        rows = list(reversed(res.data or []))
         messages = []
-        for row in res.data:
+        for row in rows:
             if row["role"] == "human":
                 messages.append(HumanMessage(content=row["content"]))
             elif row["role"] == "ai":
@@ -275,13 +276,13 @@ def load_user_history(user_id: str, limit: int = 8):
         print(f"⚠️  History load failed: {e}")
         return []
 
-def get_history_for_api(user_id: str, limit: int = 30):
+def get_history_for_api(user_id: str, limit: int = 60):
     try:
         res = (supabase_admin.table("chat_messages")
                .select("role, content, sources, created_at")
                .eq("user_id", user_id)
-               .order("created_at", desc=False).limit(limit).execute())
-        data = res.data or []
+               .order("created_at", desc=True).limit(limit).execute())
+        data = list(reversed(res.data or []))
         del res
         return data
     except Exception as e:
@@ -464,7 +465,7 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
             system_content += f"\n\nRelevant excerpts from the documents:\n{manual_context}"
         del manual_context
 
-        history          = load_user_history(user_id, limit=8)
+        history          = load_user_history(user_id, limit=30)
         messages_to_send = ([SystemMessage(content=system_content)]
                             + history + [HumanMessage(content=user_message)])
         del history
