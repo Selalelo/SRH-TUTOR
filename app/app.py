@@ -7,7 +7,8 @@ os.environ["TOKENIZERS_PARALLELISM"]  = "false"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"]  = "error"
 
-import warnings, logging, gc, time, uuid, threading
+import warnings, logging, gc, time, uuid, threading, re, json
+from datetime import datetime, timezone
 warnings.filterwarnings("ignore")
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
@@ -336,30 +337,20 @@ Teaching style:
 - Explain concepts step by step
 - Be non-judgmental, inclusive, evidence-based, and practical
 
-You have 4 modes:
+You have 3 modes here:
 1. EXPLAIN  → explain using document excerpts + your own clear examples
-2. QUIZ     → run a structured 20-question quiz (see QUIZ MODE rules below)
-3. EXERCISE → case-study or scenario-based task
-4. REVIEW   → give constructive feedback on the trainee's written answer
+2. EXERCISE → case-study or scenario-based task
+3. REVIEW   → give constructive feedback on the trainee's written answer
 
-QUIZ MODE rules (use these whenever the student asks for a quiz, test, or to be quizzed):
-- The quiz has exactly 20 questions, asked ONE AT A TIME.
-- Mix question styles: multiple-choice (with options A–D), short-answer, and true/false.
-- Cover BOTH manuals across the 20 questions — aim for a roughly even split between SRH (SPLA031) and CDL topics. Do NOT ask all 20 questions from a single manual.
-- If the student asked for a quiz on a SPECIFIC topic, scope all 20 questions to that topic and use whichever manual(s) cover it.
-- When you reveal each answer, cite the manual the question is actually drawn from — and that manual must appear in the excerpts for that turn.
-- Format every question as:
-    **Question N of 20**
-    <the question, with options A–D on separate lines if multiple-choice>
-- After the student answers, respond with:
-    ✅ Correct  /  ❌ Incorrect — <brief explanation with citation>
-    Running score: X / N answered so far
-  Then immediately ask the next question.
-- After Question 20 is answered, give a final score (e.g. "Final score: 17 / 20"), a 1–2 sentence summary of strong vs. weak areas, and offer to explain any answers in detail.
-- Never reveal more than one question at a time. Never list all 20 at once.
+NOTE on quizzes: Quizzes are handled by a separate, automated system that the
+host application invokes when the student types something like "quiz me". You
+do NOT generate quiz questions, ask "Question N of 20", or grade answers. If a
+student asks for a quiz, simply reply briefly and tell them to type "quiz me"
+(or "quiz me on <topic>") to start an automated 20-question quiz. Never invent
+your own quiz.
 
-After explaining a topic in EXPLAIN mode, ask if they want a quiz or exercise to test understanding.
-Keep non-quiz responses concise.
+After explaining a topic, ask if they want an exercise to apply what they learned.
+Keep responses concise.
 """
 
 # ══════════════════════════════════════════════════════════════
@@ -453,6 +444,470 @@ def get_me(current_user=Depends(get_current_user)):
                 "full_name": current_user.user_metadata.get("full_name", ""), "role": "trainee"}
 
 # ══════════════════════════════════════════════════════════════
+#  QUIZ SESSIONS
+# ══════════════════════════════════════════════════════════════
+#
+# Quizzes are run by the server, not the LLM. When a user asks for a
+# quiz, we (1) retrieve a balanced pool of chunks from both manuals,
+# (2) ask the LLM to generate grounded questions in a single shot,
+# (3) validate every question against the actual chunks (source/page
+# must match, excerpt_quote must appear in the chunk's text), and
+# (4) store the question list in `quiz_sessions`. After that, every
+# answer is graded server-side against the stored answer key — the
+# LLM is never asked to generate a question or invent a citation
+# during quiz turns.
+#
+# This eliminates the per-turn drift / hallucination we got when the
+# LLM was asked to manage the quiz itself.
+
+QUIZ_LENGTH = 20
+
+_QUIZ_REQUEST_RE = re.compile(
+    r"\b(quiz\s*me|quiz\s*on|quiz\s*about|start\s*(?:a\s*)?quiz|"
+    r"give\s*me\s*a\s*quiz|i\s*want\s*(?:a\s*)?quiz|test\s*me|"
+    r"let'?s\s*quiz)\b",
+    re.IGNORECASE,
+)
+_QUIZ_BARE_RE = re.compile(r"^\s*quiz\s*\??\s*$", re.IGNORECASE)
+_QUIZ_CANCEL_RE = re.compile(
+    r"^\s*(cancel|stop|quit|exit|stop\s*quiz|cancel\s*quiz|end\s*quiz|quit\s*quiz)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+_QUIZ_TOPIC_RE = re.compile(
+    r"\b(?:quiz\s*me\s*on|quiz\s*on|quiz\s*about|test\s*me\s*on)\s+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def is_quiz_request(msg: str) -> bool:
+    return bool(_QUIZ_REQUEST_RE.search(msg) or _QUIZ_BARE_RE.match(msg))
+
+
+def is_quiz_cancel(msg: str) -> bool:
+    return bool(_QUIZ_CANCEL_RE.match(msg))
+
+
+def _extract_topic(msg: str):
+    m = _QUIZ_TOPIC_RE.search(msg)
+    if not m:
+        return None
+    topic = m.group(1).strip().rstrip(".?!,")
+    return topic or None
+
+
+# ── Supabase helpers ─────────────────────────────────────────
+
+def get_active_quiz(user_id: str):
+    try:
+        res = (supabase_admin.table("quiz_sessions")
+               .select("*").eq("user_id", user_id)
+               .is_("completed_at", "null").is_("cancelled_at", "null")
+               .order("started_at", desc=True).limit(1).execute())
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f"⚠️  get_active_quiz failed: {e}")
+        return None
+
+
+def create_quiz_session(user_id: str, questions: list, topic):
+    try:
+        payload = {
+            "user_id":       user_id,
+            "questions":     questions,
+            "answers":       [],
+            "current_index": 0,
+            "score":         0,
+            "topic":         topic,
+        }
+        res = supabase_admin.table("quiz_sessions").insert(payload).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        print(f"⚠️  create_quiz_session failed: {e}")
+        return None
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def update_quiz_session(session_id: str, *, current_index: int, score: int,
+                       answers: list, completed: bool = False):
+    try:
+        update = {"current_index": current_index, "score": score, "answers": answers}
+        if completed:
+            update["completed_at"] = _now_iso()
+        supabase_admin.table("quiz_sessions").update(update).eq("id", session_id).execute()
+    except Exception as e:
+        print(f"⚠️  update_quiz_session failed: {e}")
+
+
+def cancel_quiz_session(session_id: str):
+    try:
+        (supabase_admin.table("quiz_sessions")
+         .update({"cancelled_at": _now_iso()}).eq("id", session_id).execute())
+    except Exception as e:
+        print(f"⚠️  cancel_quiz_session failed: {e}")
+
+
+def cancel_active_quizzes_for_user(user_id: str):
+    try:
+        (supabase_admin.table("quiz_sessions")
+         .update({"cancelled_at": _now_iso()}).eq("user_id", user_id)
+         .is_("completed_at", "null").is_("cancelled_at", "null").execute())
+    except Exception as e:
+        print(f"⚠️  cancel_active_quizzes_for_user failed: {e}")
+
+
+# ── Question generation (validated against real chunks) ──────
+
+def _retrieve_quiz_chunks(topic, n_per_source: int = 10):
+    """Return (excerpts_text_for_prompt, chunks_meta) — chunks_meta
+    is a list of {source, page, text} for validation."""
+    query = topic if topic else "training material overview key concepts"
+    if not collection_exists(MANUAL_COLLECTION):
+        return "", []
+    try:
+        query_vector = embed_one(query)
+        results = qdrant.query_points(
+            collection_name=MANUAL_COLLECTION,
+            query=query_vector,
+            limit=80,
+            with_payload=True,
+        )
+        if not results.points:
+            return "", []
+
+        per_source: dict = {}
+        for hit in results.points:
+            src = hit.payload.get("source", "Manual")
+            bucket = per_source.setdefault(src, [])
+            if len(bucket) < n_per_source:
+                bucket.append(hit)
+
+        chunks_meta = []
+        for hits in per_source.values():
+            for hit in hits:
+                chunks_meta.append({
+                    "source": hit.payload.get("source", "Manual"),
+                    "page":   hit.payload.get("page"),
+                    "text":   hit.payload.get("text", ""),
+                })
+
+        prompt_parts = [f"[{c['source']}, Page {c['page']}]:\n{c['text']}"
+                        for c in chunks_meta]
+        return "\n\n".join(prompt_parts), chunks_meta
+    except Exception as e:
+        print(f"⚠️  quiz chunk retrieval failed: {e}")
+        return "", []
+
+
+_QUIZ_GEN_SYSTEM = """You generate quiz questions strictly grounded in provided document excerpts.
+
+Rules:
+- Output VALID JSON only — a single array of question objects. No prose, no code fences, no commentary.
+- Each question must be answerable from ONE specific excerpt provided.
+- The "source" and "page" fields MUST exactly match the [Source, Page N] header of the excerpt the question is drawn from.
+- The "excerpt_quote" must be a verbatim quote (≥10 words) from that excerpt.
+- Cover BOTH manuals — split questions roughly evenly across the distinct sources present in the excerpts.
+- Question types: multiple-choice ("mcq") with 4 options A–D, OR true/false ("tf"). No short-answer or open-ended questions.
+- Test substantive medical/clinical knowledge — NOT the manual's structure (e.g. "does the manual have a section on X" is forbidden).
+- Each MCQ must have exactly one correct option. The "correct_answer" is just the letter "A"/"B"/"C"/"D".
+- For tf, "correct_answer" is "True" or "False".
+- "explanation" is 1–2 sentences citing the source naturally.
+"""
+
+
+def _quiz_gen_user_prompt(excerpts: str, n: int, topic) -> str:
+    topic_clause = (
+        f"All questions must be on the topic: {topic}.\n\n"
+        if topic else
+        "Spread questions across the topics covered in the excerpts.\n\n"
+    )
+    return (
+        f"{topic_clause}Generate {n} quiz questions from these excerpts.\n\n"
+        f"EXCERPTS:\n{excerpts}\n\n"
+        "Output schema (JSON array):\n"
+        '[\n'
+        '  {\n'
+        '    "type": "mcq",\n'
+        '    "question": "...",\n'
+        '    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],\n'
+        '    "correct_answer": "B",\n'
+        '    "explanation": "...",\n'
+        '    "source": "<exact source name from the bracket>",\n'
+        '    "page": <number>,\n'
+        '    "excerpt_quote": "<verbatim quote of >=10 words>"\n'
+        '  },\n'
+        '  {\n'
+        '    "type": "tf",\n'
+        '    "question": "...",\n'
+        '    "correct_answer": "True",\n'
+        '    "explanation": "...",\n'
+        '    "source": "<exact source name>",\n'
+        '    "page": <number>,\n'
+        '    "excerpt_quote": "<verbatim quote of >=10 words>"\n'
+        '  }\n'
+        ']\n\n'
+        f"Aim for ~75% mcq and ~25% tf. Output the JSON array of {n} items and nothing else."
+    )
+
+
+def _extract_json_array(text: str):
+    if not text:
+        return None
+    s = text.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```\s*$", "", s)
+    start = s.find("[")
+    end = s.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(s[start:end + 1])
+    except Exception:
+        return None
+
+
+def _validate_quiz_question(q, chunks_meta) -> bool:
+    if not isinstance(q, dict):
+        return False
+    qtype = q.get("type")
+    if qtype not in ("mcq", "tf"):
+        return False
+    if not q.get("question") or not q.get("explanation"):
+        return False
+    src   = q.get("source")
+    page  = q.get("page")
+    quote = (q.get("excerpt_quote") or "").strip().lower()
+    if not src or page is None or not quote:
+        return False
+
+    if qtype == "mcq":
+        opts = q.get("options")
+        if not isinstance(opts, list) or len(opts) != 4:
+            return False
+        ans = (q.get("correct_answer") or "").strip().upper()
+        if ans not in ("A", "B", "C", "D"):
+            return False
+        q["correct_answer"] = ans   # canonicalise to upper-case letter
+    else:
+        ans = (q.get("correct_answer") or "").strip().lower()
+        if ans not in ("true", "false"):
+            return False
+        q["correct_answer"] = "True" if ans == "true" else "False"   # canonical case
+
+    quote_norm = re.sub(r"\s+", " ", quote)
+    needle = quote_norm[:60]
+    for c in chunks_meta:
+        if c["source"] == src and c["page"] == page:
+            chunk_norm = re.sub(r"\s+", " ", (c["text"] or "").lower())
+            if needle and needle in chunk_norm:
+                return True
+    return False
+
+
+def generate_quiz_questions(topic):
+    """Returns (questions, error_message_or_None). On success, len() == QUIZ_LENGTH."""
+    excerpts, chunks_meta = _retrieve_quiz_chunks(topic)
+    if not chunks_meta:
+        return [], "📚 The training manuals don't appear to be ingested yet."
+
+    n_request = QUIZ_LENGTH + 8
+
+    for attempt in range(2):
+        try:
+            messages = [
+                SystemMessage(content=_QUIZ_GEN_SYSTEM),
+                HumanMessage(content=_quiz_gen_user_prompt(excerpts, n_request, topic)),
+            ]
+            response = get_llm().invoke(messages)
+            raw = getattr(response, "content", "") or str(response)
+            arr = _extract_json_array(raw)
+            if not arr:
+                continue
+            valid = [q for q in arr if _validate_quiz_question(q, chunks_meta)]
+            if len(valid) >= QUIZ_LENGTH:
+                kept = valid[:QUIZ_LENGTH]
+                for i, q in enumerate(kept, start=1):
+                    q["n"] = i
+                    # Strip the verification quote — we don't need to send it back to the client
+                    q.pop("excerpt_quote", None)
+                return kept, None
+        except Exception as e:
+            print(f"⚠️  quiz generation attempt {attempt + 1} failed: {e}")
+
+    return [], ("⚠️ I couldn't generate a grounded quiz from the manuals right now. "
+                "Please try again in a moment.")
+
+
+# ── Quiz turn formatting & grading ───────────────────────────
+
+def format_question(q: dict) -> str:
+    n = q.get("n", "?")
+    if q["type"] == "mcq":
+        opts = "\n".join(q["options"])
+        return (f"**Question {n} of {QUIZ_LENGTH}**\n{q['question']}\n\n"
+                f"{opts}\n\n_Reply with A, B, C, or D._")
+    return (f"**Question {n} of {QUIZ_LENGTH}** (True / False)\n{q['question']}\n\n"
+            "_Reply with True or False._")
+
+
+def _normalize_mcq_answer(user_input: str, q: dict):
+    s = user_input.strip()
+    if not s:
+        return None
+    # Find a standalone A/B/C/D letter anywhere in the answer
+    m = re.search(r"\b([A-Da-d])\b", s)
+    if m:
+        return m.group(1).upper()
+    # Fallback: match by full option text
+    s_lower = s.lower()
+    for opt in q.get("options", []):
+        om = re.match(r"^\s*([A-D])\s*[).:\-]?\s*(.*)$", opt)
+        if not om:
+            continue
+        letter = om.group(1).upper()
+        text = om.group(2).strip().lower()
+        if text and (text in s_lower or s_lower in text):
+            return letter
+    return None
+
+
+def _normalize_tf_answer(user_input: str):
+    s = user_input.strip().lower()
+    if not s:
+        return None
+    if s in ("t", "true", "yes", "y") or s.startswith("true"):
+        return "True"
+    if s in ("f", "false", "no", "n") or s.startswith("false"):
+        return "False"
+    return None
+
+
+def grade_answer(q: dict, user_input: str):
+    if q["type"] == "mcq":
+        norm = _normalize_mcq_answer(user_input, q)
+        if norm is None:
+            return False, user_input
+        return norm == q["correct_answer"].upper(), norm
+    norm = _normalize_tf_answer(user_input)
+    if norm is None:
+        return False, user_input
+    return norm == q["correct_answer"], norm
+
+
+def format_feedback(is_correct: bool, q: dict, score: int, answered: int) -> str:
+    correct_display = q["correct_answer"]
+    if q["type"] == "mcq":
+        for opt in q.get("options", []):
+            if opt.strip().upper().startswith(correct_display.upper() + ")"):
+                correct_display = opt
+                break
+    mark = "✅ **Correct.**" if is_correct else f"❌ **Incorrect** — the correct answer is **{correct_display}**."
+    citation = f"_{q['source']}, Page {q['page']}_"
+    explanation = q.get("explanation", "")
+    return f"{mark} {explanation} ({citation})\n\nRunning score: **{score} / {answered}**"
+
+
+def format_quiz_summary(score: int, total: int) -> str:
+    pct = (score / total) * 100 if total else 0
+    if pct >= 80:
+        verdict = "Excellent work — you have a strong grasp of the material."
+    elif pct >= 60:
+        verdict = "Good effort — there are a few gaps worth reviewing."
+    else:
+        verdict = "There's room to grow — review the cited pages and try another quiz."
+    return (f"🎓 **Quiz complete!**\n\n"
+            f"**Final score: {score} / {total}** ({pct:.0f}%)\n\n"
+            f"{verdict}\n\n"
+            f"Type 'quiz me' to start another quiz, or ask any question to keep learning.")
+
+
+# ── Quiz dispatch ────────────────────────────────────────────
+
+def start_quiz(user_id: str, user_message: str):
+    topic = _extract_topic(user_message)
+    save_message(user_id, "human", user_message)
+
+    questions, error = generate_quiz_questions(topic)
+    if error or not questions:
+        ai_response = error or "⚠️ Couldn't start a quiz right now. Please try again."
+        save_message(user_id, "ai", ai_response)
+        return {"response": ai_response, "sources": []}
+
+    session = create_quiz_session(user_id, questions, topic)
+    if not session:
+        ai_response = "⚠️ Couldn't save the quiz session. Please try again."
+        save_message(user_id, "ai", ai_response)
+        return {"response": ai_response, "sources": []}
+
+    first_q = questions[0]
+    if topic:
+        intro = (f"📝 **Quiz started on _{topic}_!** {QUIZ_LENGTH} questions, "
+                 f"drawn straight from your training manuals. "
+                 f"Type 'cancel' at any time to stop.\n\n")
+    else:
+        intro = (f"📝 **Quiz started!** {QUIZ_LENGTH} questions, drawn straight "
+                 f"from your training manuals. Type 'cancel' at any time to stop.\n\n")
+    body_text = intro + format_question(first_q)
+    sources = [f"{first_q['source']} · Page {first_q['page']}"]
+
+    save_message(user_id, "ai", body_text, sources=sources)
+    return {"response": body_text, "sources": sources}
+
+
+def handle_quiz_turn(session: dict, user_id: str, user_message: str):
+    save_message(user_id, "human", user_message)
+
+    questions = session["questions"] or []
+    idx       = session["current_index"]
+    score     = session["score"]
+    answers   = session.get("answers") or []
+
+    if idx >= len(questions):
+        # Defensive: session should have been completed already
+        summary = format_quiz_summary(score, len(questions))
+        save_message(user_id, "ai", summary)
+        update_quiz_session(session["id"], current_index=idx, score=score,
+                            answers=answers, completed=True)
+        return {"response": summary, "sources": []}
+
+    current_q = questions[idx]
+    is_correct, normalized = grade_answer(current_q, user_message)
+    new_score = score + (1 if is_correct else 0)
+    answered  = idx + 1
+    answers   = answers + [{
+        "n":          current_q.get("n", answered),
+        "user":       user_message,
+        "normalized": normalized,
+        "correct":    is_correct,
+        "expected":   current_q["correct_answer"],
+    }]
+
+    feedback = format_feedback(is_correct, current_q, new_score, answered)
+    sources  = [f"{current_q['source']} · Page {current_q['page']}"]
+
+    if answered >= len(questions):
+        update_quiz_session(session["id"], current_index=answered,
+                            score=new_score, answers=answers, completed=True)
+        body = f"{feedback}\n\n---\n\n{format_quiz_summary(new_score, len(questions))}"
+        save_message(user_id, "ai", body, sources=sources)
+        return {"response": body, "sources": sources}
+
+    next_q = questions[answered]
+    next_q_text = format_question(next_q)
+    body = f"{feedback}\n\n---\n\n{next_q_text}"
+    next_sources = [f"{next_q['source']} · Page {next_q['page']}"]
+    update_quiz_session(session["id"], current_index=answered,
+                        score=new_score, answers=answers)
+    all_sources = list(dict.fromkeys(sources + next_sources))
+    save_message(user_id, "ai", body, sources=all_sources)
+    return {"response": body, "sources": all_sources}
+
+
+# ══════════════════════════════════════════════════════════════
 #  CHAT ROUTES
 # ══════════════════════════════════════════════════════════════
 
@@ -465,7 +920,28 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        # ── Search across both books with source-balanced retrieval ──
+        # ── Quiz dispatch (server-driven, no LLM hallucination) ──
+        active = get_active_quiz(user_id)
+        if active:
+            if is_quiz_cancel(user_message):
+                cancel_quiz_session(active["id"])
+                save_message(user_id, "human", user_message)
+                progress = f"{active['score']} / {active['current_index']}"
+                msg = (f"🛑 Quiz cancelled. Your progress was **{progress}**. "
+                       "Ask anything, or type 'quiz me' to start a new one.")
+                save_message(user_id, "ai", msg)
+                gc.collect()
+                return {"response": msg, "sources": []}
+            result = handle_quiz_turn(active, user_id, user_message)
+            gc.collect()
+            return result
+
+        if is_quiz_request(user_message):
+            result = start_quiz(user_id, user_message)
+            gc.collect()
+            return result
+
+        # ── Normal chat flow ──
         manual_context, sources = search_manual(user_message)
 
         system_content = SYSTEM_PROMPT
@@ -503,6 +979,7 @@ def get_history(current_user=Depends(get_current_user)):
 
 @app.delete("/chat/history")
 def clear_history(current_user=Depends(get_current_user)):
+    cancel_active_quizzes_for_user(current_user.id)
     delete_user_history(current_user.id)
     return {"message": "Chat history cleared"}
 
