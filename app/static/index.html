@@ -10,9 +10,6 @@
     --srh:       #c0394b;
     --srh-lt:    #e8536a;
     --srh-dk:    #8f1f2e;
-    --cdl:       #1a6b5c;
-    --cdl-lt:    #2a9d84;
-    --cdl-dk:    #0f4a3f;
     --cream:     #f8f5f0;
     --sand:      #ede8e0;
     --sand-dk:   #cdc4b8;
@@ -26,12 +23,6 @@
     --mod:       var(--srh);
     --mod-lt:    var(--srh-lt);
     --mod-dk:    var(--srh-dk);
-  }
-
-  body.cdl-mode {
-    --mod:    var(--cdl);
-    --mod-lt: var(--cdl-lt);
-    --mod-dk: var(--cdl-dk);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,11 +44,6 @@
       radial-gradient(ellipse 60% 40% at 90% 100%, rgba(26,107,92,0.06)  0%, transparent 55%);
     pointer-events: none; z-index: 0;
     transition: all 0.4s;
-  }
-  body.cdl-mode::before {
-    background:
-      radial-gradient(ellipse 80% 50% at 15% -5%,  rgba(26,107,92,0.08)  0%, transparent 55%),
-      radial-gradient(ellipse 60% 40% at 90% 100%, rgba(42,157,132,0.06) 0%, transparent 55%);
   }
 
   /* ══════════════════════════════
@@ -260,11 +246,6 @@
     padding: 3px 10px; border-radius: 20px;
     margin-top: 6px;
   }
-  body.cdl-mode .sources-tag {
-    background: #f0faf8; border-color: rgba(26,107,92,0.2);
-    color: var(--cdl-dk);
-  }
-
   /* Typing */
   .typing-bubble {
     background: var(--white);
@@ -356,7 +337,6 @@
     margin-bottom: 12px;
   }
   .module-badge.srh { background: #fff0f2; color: var(--srh-dk); border: 1px solid rgba(192,57,75,0.2); }
-  .module-badge.cdl { background: #f0faf8; color: var(--cdl-dk); border: 1px solid rgba(26,107,92,0.2); }
 
   /* Animations */
   @keyframes fadeUp {
@@ -565,9 +545,9 @@
 
   <!-- Top bar -->
   <div class="topbar">
-    <div class="topbar-icon" id="topbar-icon">🏥</div>
+    <div class="topbar-icon">📖</div>
     <div class="topbar-info">
-      <h2 id="topbar-title">SPLA Tutor</h2>
+      <h2>SPLA Tutor</h2>
       <span id="user-label">Loading…</span>
     </div>
     <div class="topbar-actions">
@@ -580,16 +560,16 @@
   <div id="messages">
     <div class="welcome-card" id="welcome-card">
       <div class="wc-icon">📖</div>
-      <div class="module-badge srh" id="welcome-badge">SPLA031 · SRH</div>
-      <h3 id="welcome-title">Sexual &amp; Reproductive Health</h3>
-      <p id="welcome-text">Ask me anything from your SRH training manual — anatomy, contraception, STIs, pregnancy, and more.</p>
+      <div class="module-badge srh">SPLA Training</div>
+      <h3>SPLA Tutor</h3>
+      <p>Ask me anything from your SRH or Chronic Disease &amp; Lifestyle training manuals — I'll cite the source and page for every answer.</p>
     </div>
   </div>
 
   <!-- Input -->
   <div class="input-area">
     <div class="input-row">
-      <textarea id="user-input" placeholder="Ask about SRH topics…" rows="1"
+      <textarea id="user-input" placeholder="Ask about SRH or chronic disease &amp; lifestyle topics…" rows="1"
         aria-label="Type your question"
         onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
       <button class="send-btn" id="send-btn" onclick="sendMessage()" title="Send message (Enter)" aria-label="Send message">
@@ -608,80 +588,18 @@
 const API = 'https://srh-tutor-1.onrender.com';
 let accessToken = localStorage.getItem('srh_token') || null;
 let currentUser = null;
-let activeModule = localStorage.getItem('spla_module') || 'srh';
 
-// ══════════════════════════════════════════
-//  MODULE CONFIG
-// ══════════════════════════════════════════
-const MODULES = {
-  srh: {
-    icon:        '🏥',
-    title:       'Sexual & Reproductive Health',
-    badge:       'SPLA031 · SRH',
-    badgeClass:  'srh',
-    placeholder: 'Ask about SRH topics…',
-    welcome:     'Ask me anything from your SRH training manual — anatomy, contraception, STIs, pregnancy, and more.',
-    commands: [
-      { label: '🔬 Menstrual cycle',    text: 'Explain the menstrual cycle' },
-      { label: '💊 Contraception',      text: 'What are the types of contraception?' },
-      { label: '🧬 HIV transmission',   text: 'Explain HIV transmission and prevention' },
-      { label: '🤰 Antenatal care',     text: 'What happens during antenatal care?' },
-      { label: '❓ Quiz me',            text: 'Quiz me on SRH topics' },
-      { label: '📝 Case study',         text: 'Give me a case study exercise on reproductive health' },
-    ]
-  },
-  cdl: {
-    icon:        '🫀',
-    title:       'Chronic Disease & Lifestyle',
-    badge:       'CDL · Lifestyle',
-    badgeClass:  'cdl',
-    placeholder: 'Ask about chronic disease & lifestyle topics…',
-    welcome:     'Ask me anything from your Chronic Disease & Lifestyle training material — hypertension, diabetes, obesity, nutrition, and more.',
-    commands: [
-      { label: '❤️ Hypertension',        text: 'Explain hypertension causes and management' },
-      { label: '🩸 Diabetes',            text: 'What is type 2 diabetes and how is it managed?' },
-      { label: '🍎 Nutrition',           text: 'Explain the role of nutrition in chronic disease prevention' },
-      { label: '🏃 Physical activity',   text: 'How does physical activity affect chronic disease risk?' },
-      { label: '🫁 Respiratory disease', text: 'Explain chronic obstructive pulmonary disease (COPD)' },
-      { label: '❓ Quiz me',             text: 'Quiz me on chronic disease and lifestyle topics' },
-    ]
-  }
-};
+const WELCOME_HTML = `
+  <div class="welcome-card" id="welcome-card">
+    <div class="wc-icon">📖</div>
+    <div class="module-badge srh">SPLA Training</div>
+    <h3>SPLA Tutor</h3>
+    <p>Ask me anything from your SRH or Chronic Disease &amp; Lifestyle training manuals — I'll cite the source and page for every answer.</p>
+  </div>
+`;
 
-// ══════════════════════════════════════════
-//  MODULE SWITCHER
-// ══════════════════════════════════════════
-const moduleChats = { srh: null, cdl: null };
-
-function saveChatState(mod) {
-  moduleChats[mod] = document.getElementById('messages').innerHTML;
-}
-
-function restoreChatState(mod) {
-  const container = document.getElementById('messages');
-  if (moduleChats[mod]) {
-    container.innerHTML = moduleChats[mod];
-    scrollBottom();
-  } else {
-    resetMessages(mod);
-  }
-}
-
-function switchModule(mod) {
-  if (mod === activeModule) return;
-  saveChatState(activeModule);
-  activeModule = mod;
-  localStorage.setItem('spla_module', mod);
-  const cfg = MODULES[mod];
-
-  document.body.classList.toggle('cdl-mode', mod === 'cdl');
-
-  document.getElementById('topbar-icon').textContent  = cfg.icon;
-  document.getElementById('topbar-title').textContent = cfg.title;
-  document.getElementById('user-input').placeholder   = cfg.placeholder;
-
-  restoreChatState(mod);
-  showToast(`Switched to ${cfg.title}`);
+function resetMessages() {
+  document.getElementById('messages').innerHTML = WELCOME_HTML;
 }
 
 // ══════════════════════════════════════════
@@ -823,7 +741,6 @@ async function showChat() {
     }
     await loadHistory();
   } catch(e) {}
-  switchModule(activeModule);
   document.getElementById('user-input').focus();
 }
 
@@ -837,7 +754,6 @@ async function loadHistory() {
     container.innerHTML = '';
     history.forEach(msg => appendBubble(msg.role === 'human' ? 'user' : 'ai', msg.content, false));
     scrollBottom();
-    moduleChats[activeModule] = container.innerHTML;
   } catch(e) {}
 }
 
@@ -921,8 +837,7 @@ async function sendMessage() {
     const r = await fetch(`${API}/chat`, {
       method: 'POST',
       headers: authHeaders(),
-      // ── FIX: activeModule is sent with every request ──
-      body: JSON.stringify({ message: text, module: activeModule })
+      body: JSON.stringify({ message: text })
     });
     hideTyping();
     if (r.status === 401) { signOut(); return; }
@@ -943,10 +858,6 @@ async function sendMessage() {
   }
 }
 
-function quickSend(text) {
-  document.getElementById('user-input').value = text;
-  sendMessage();
-}
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
@@ -959,32 +870,18 @@ function scrollBottom() {
   m.scrollTop = m.scrollHeight;
 }
 
-function resetMessages(mod) {
-  mod = mod || activeModule;
-  const cfg = MODULES[mod];
-  moduleChats[mod] = null;
-  document.getElementById('messages').innerHTML = `
-    <div class="welcome-card" id="welcome-card">
-      <div class="wc-icon">${cfg.icon}</div>
-      <div class="module-badge ${cfg.badgeClass}" id="welcome-badge">${cfg.badge}</div>
-      <h3 id="welcome-title">${cfg.title}</h3>
-      <p id="welcome-text">${cfg.welcome}</p>
-    </div>`;
-}
-
 async function clearHistory() {
-  if (!confirm('Clear all chat history for the current module?')) return;
+  if (!confirm('Clear all chat history?')) return;
   try {
     const r = await fetch(`${API}/chat/history`, { method:'DELETE', headers: authHeaders() });
     if (r.ok) {
-      resetMessages(activeModule);
+      resetMessages();
       showToast('Chat history cleared');
     }
   } catch(e) {}
 }
 
 // ── Init ──────────────────────────────────────────────────────
-if (activeModule === 'cdl') document.body.classList.add('cdl-mode');
 
 (async function init() {
   if (!accessToken) return;

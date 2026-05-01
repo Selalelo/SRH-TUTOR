@@ -58,17 +58,6 @@ MANUAL_COLLECTION = "srh_manual"
 CHAT_COLLECTION   = "srh_chat"
 VECTOR_SIZE       = 384
 
-# ── Module → source label mapping ────────────────────────────
-# These must exactly match the labels entered during ingestion.
-# Update CDL_SOURCE to match what you typed when ingesting the CDL book.
-SRH_SOURCE = os.getenv("SRH_SOURCE", "SPLA031 Sexual & Reproductive Health Training Manual 2024")
-CDL_SOURCE = os.getenv("CDL_SOURCE", "")   # set this in your .env or Render env vars
-
-MODULE_SOURCES = {
-    "srh": SRH_SOURCE,
-    "cdl": CDL_SOURCE,
-}
-
 _known_collections: set = set()
 
 def collection_exists(name: str) -> bool:
@@ -200,7 +189,7 @@ def get_current_user(authorization: str = Header(...)):
         raise HTTPException(status_code=401, detail="Could not validate token")
 
 # ══════════════════════════════════════════════════════════════
-#  MANUAL SEARCH  (now module-aware)
+#  MANUAL SEARCH
 # ══════════════════════════════════════════════════════════════
 
 def search_manual(query: str, n_results: int = 3, source_filter: str = None):
@@ -233,8 +222,10 @@ def search_manual(query: str, n_results: int = 3, source_filter: str = None):
             return "", []
         parts, sources = [], []
         for hit in results.points:
-            parts.append(f"[Page {hit.payload['page']}]:\n{hit.payload['text']}")
-            sources.append(f"Page {hit.payload['page']}")
+            src = hit.payload.get("source", "Manual")
+            page = hit.payload["page"]
+            parts.append(f"[{src}, Page {page}]:\n{hit.payload['text']}")
+            sources.append(f"{src} · Page {page}")
         del results
         return "\n".join(parts), sources
     except HTTPException:
@@ -317,23 +308,25 @@ def update_last_seen(user_id: str):
         pass
 
 # ══════════════════════════════════════════════════════════════
-#  SYSTEM PROMPTS  (one per module)
+#  SYSTEM PROMPT
 # ══════════════════════════════════════════════════════════════
 
-SRH_SYSTEM_PROMPT = """You are a professional, compassionate tutor for SPLA training modules.
-You have access to the SPLA031: Sexual & Reproductive Health (SRH) Training Manual (2024).
+SYSTEM_PROMPT = """You are a professional, compassionate tutor for SPLA training modules.
+You have access to two training documents:
+  • SPLA031: Sexual & Reproductive Health (SRH) Training Manual (2024)
+  • Chronic Disease & Lifestyle (CDL) training document
 
-Answer questions ONLY from the SRH training document.
-Always cite the document and page number you are referencing.
-If asked about something not covered in the SRH document, politely say it is outside
-the scope of the available SRH training materials.
+Answer questions ONLY from the provided training documents.
+Always cite the document and page number you are referencing
+(e.g. "As the SPLA031 manual states on page 34..." or "As the CDL manual notes on page 12...").
+If asked about something not covered in either document, politely say it is outside
+the scope of the available training materials.
 
 Teaching style:
 - Ground explanations in the provided document excerpts
 - Use clear, clinical, respectful language
 - Explain concepts step by step
-- Be non-judgmental and inclusive
-- Always cite e.g. "As the SPLA031 manual states on page 34..."
+- Be non-judgmental, inclusive, evidence-based, and practical
 
 You have 4 modes:
 1. EXPLAIN  → explain using document excerpts + your own clear examples
@@ -344,36 +337,6 @@ You have 4 modes:
 After explaining, ask if they want a quiz or exercise to test understanding.
 Keep responses concise.
 """
-
-CDL_SYSTEM_PROMPT = """You are a professional, knowledgeable tutor for SPLA training modules.
-You have access to the Chronic Disease & Lifestyle (CDL) training document.
-
-Answer questions ONLY from the CDL training document.
-Always cite the document and page number you are referencing.
-If asked about something not covered in the CDL document, politely say it is outside
-the scope of the available CDL training materials.
-
-Teaching style:
-- Ground explanations in the provided document excerpts
-- Use clear, clinical, respectful language
-- Explain concepts step by step
-- Be evidence-based and practical
-- Always cite e.g. "As the CDL manual states on page 12..."
-
-You have 4 modes:
-1. EXPLAIN  → explain using document excerpts + your own clear examples
-2. QUIZ     → give 1 exam-style question, wait for answer before revealing it
-3. EXERCISE → case-study or scenario-based task
-4. REVIEW   → give constructive feedback on the trainee's written answer
-
-After explaining, ask if they want a quiz or exercise to test understanding.
-Keep responses concise.
-"""
-
-MODULE_PROMPTS = {
-    "srh": SRH_SYSTEM_PROMPT,
-    "cdl": CDL_SYSTEM_PROMPT,
-}
 
 # ══════════════════════════════════════════════════════════════
 #  PYDANTIC MODELS
@@ -390,7 +353,6 @@ class SignInRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    module: str = "srh"   # "srh" or "cdl" — sent by the frontend
 
 # ══════════════════════════════════════════════════════════════
 #  AUTH ROUTES
@@ -474,21 +436,17 @@ def get_me(current_user=Depends(get_current_user)):
 def chat(body: ChatRequest, current_user=Depends(get_current_user)):
     user_id      = current_user.id
     user_message = body.message.strip()
-    module       = body.module if body.module in MODULE_SOURCES else "srh"
 
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        # ── Source filter: only search chunks from the active module's book ──
-        source_filter = MODULE_SOURCES.get(module) or None
-        manual_context, sources = search_manual(user_message, n_results=3,
-                                                source_filter=source_filter)
+        # ── Search across both books (no source filter) ──
+        manual_context, sources = search_manual(user_message, n_results=3)
 
-        # ── System prompt for this module ──
-        system_content = MODULE_PROMPTS.get(module, SRH_SYSTEM_PROMPT)
+        system_content = SYSTEM_PROMPT
         if manual_context:
-            system_content += f"\n\nRelevant excerpts from the document:\n{manual_context}"
+            system_content += f"\n\nRelevant excerpts from the documents:\n{manual_context}"
         del manual_context
 
         history          = load_user_history(user_id, limit=8)
@@ -543,7 +501,6 @@ def get_stats(current_user=Depends(get_current_user)):
 def list_sources():
     """
     Returns the distinct 'source' labels stored in the manual collection.
-    Use this to confirm the exact string to put in MODULE_SOURCES / .env.
     """
     if not collection_exists(MANUAL_COLLECTION):
         return {"sources": [], "detail": "Manual collection not found."}
@@ -595,9 +552,6 @@ def startup():
     t.start()
     print(f"📁 Frontend: {STATIC_DIR}")
     print("⏳ Models loading in background...")
-    if not CDL_SOURCE:
-        print("⚠️  CDL_SOURCE env var is not set — CDL module will search all books.")
-        print("   Run GET /debug/sources to find the correct label, then set CDL_SOURCE.")
 
 if __name__ == "__main__":
     import uvicorn
