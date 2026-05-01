@@ -35,7 +35,6 @@ from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
     PayloadSchemaType, Filter, FieldCondition, MatchValue
 )
-# Pure ONNX embedder — no Rust, no PyTorch, works on Python 3.14
 from srh_embedder import embed, embed_one
 
 # ══════════════════════════════════════════════════════════════
@@ -46,7 +45,6 @@ _url         = os.getenv("SUPABASE_URL")
 _anon_key    = os.getenv("SUPABASE_ANON_KEY")
 _service_key = os.getenv("SUPABASE_SERVICE_KEY", _anon_key)
 
-# One admin client for DB operations, one anon for auth
 supabase_admin: Client = create_client(_url, _service_key)
 supabase_auth:  Client = create_client(_url, _anon_key)
 
@@ -60,7 +58,17 @@ MANUAL_COLLECTION = "srh_manual"
 CHAT_COLLECTION   = "srh_chat"
 VECTOR_SIZE       = 384
 
-# Cache collection names so we don't call Qdrant on every request
+# ── Module → source label mapping ────────────────────────────
+# These must exactly match the labels entered during ingestion.
+# Update CDL_SOURCE to match what you typed when ingesting the CDL book.
+SRH_SOURCE = os.getenv("SRH_SOURCE", "SPLA031 Sexual & Reproductive Health Training Manual 2024")
+CDL_SOURCE = os.getenv("CDL_SOURCE", "")   # set this in your .env or Render env vars
+
+MODULE_SOURCES = {
+    "srh": SRH_SOURCE,
+    "cdl": CDL_SOURCE,
+}
+
 _known_collections: set = set()
 
 def collection_exists(name: str) -> bool:
@@ -80,7 +88,6 @@ def collection_exists(name: str) -> bool:
 
 _llm   = None
 _agent = None
-# embed_one() is imported from embedder.py above
 
 def get_llm():
     global _llm
@@ -122,7 +129,6 @@ def health():
 
 @app.get("/ready")
 def ready():
-    """Returns whether the model is pre-warmed and ready for fast responses."""
     from srh_embedder import _session
     model_ready = _session is not None
     return {
@@ -145,7 +151,6 @@ def init_qdrant_chat_collection():
             _known_collections.add(CHAT_COLLECTION)
             print(f"✅ Qdrant '{CHAT_COLLECTION}' created.")
 
-        # Always ensure indexes exist (safe to run even if collection already existed)
         qdrant.create_payload_index(
             collection_name=CHAT_COLLECTION,
             field_name="timestamp",
@@ -154,11 +159,27 @@ def init_qdrant_chat_collection():
         qdrant.create_payload_index(
             collection_name=CHAT_COLLECTION,
             field_name="user_id",
-            field_schema=PayloadSchemaType.KEYWORD   # ← required for filter-by-user_id
+            field_schema=PayloadSchemaType.KEYWORD
         )
-        print(f"✅ Qdrant indexes ready.")
+        print(f"✅ Qdrant chat indexes ready.")
     except Exception as e:
-        print(f"⚠️  Qdrant init: {e}")
+        print(f"⚠️  Qdrant chat init: {e}")
+
+def init_qdrant_manual_index():
+    """Ensure the 'source' payload index exists on the manual collection."""
+    try:
+        if not collection_exists(MANUAL_COLLECTION):
+            print(f"ℹ️  Manual collection not found — skipping source index creation.")
+            return
+        qdrant.create_payload_index(
+            collection_name=MANUAL_COLLECTION,
+            field_name="source",
+            field_schema=PayloadSchemaType.KEYWORD
+        )
+        print(f"✅ Qdrant manual 'source' index ready.")
+    except Exception as e:
+        # Index may already exist — not a fatal error
+        print(f"ℹ️  Manual source index: {e}")
 
 # ══════════════════════════════════════════════════════════════
 #  AUTH HELPER
@@ -179,18 +200,34 @@ def get_current_user(authorization: str = Header(...)):
         raise HTTPException(status_code=401, detail="Could not validate token")
 
 # ══════════════════════════════════════════════════════════════
-#  MANUAL SEARCH
+#  MANUAL SEARCH  (now module-aware)
 # ══════════════════════════════════════════════════════════════
 
-def search_manual(query: str, n_results: int = 3):
+def search_manual(query: str, n_results: int = 3, source_filter: str = None):
+    """
+    Search the manual collection.
+    If source_filter is provided, only chunks whose 'source' payload matches
+    that value are returned — preventing cross-book contamination.
+    """
     if not collection_exists(MANUAL_COLLECTION):
         raise HTTPException(status_code=503,
             detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
     try:
         query_vector = embed_one(query)
+
+        # Build optional source filter
+        query_filter = None
+        if source_filter:
+            query_filter = Filter(must=[
+                FieldCondition(key="source", match=MatchValue(value=source_filter))
+            ])
+
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
-            query=query_vector, limit=n_results, with_payload=True
+            query=query_vector,
+            limit=n_results,
+            with_payload=True,
+            query_filter=query_filter      # ← only chunks from the right book
         )
         if not results.points:
             return "", []
@@ -280,25 +317,23 @@ def update_last_seen(user_id: str):
         pass
 
 # ══════════════════════════════════════════════════════════════
-#  SYSTEM PROMPT
+#  SYSTEM PROMPTS  (one per module)
 # ══════════════════════════════════════════════════════════════
 
-SYSTEM_PROMPT = """You are a professional, compassionate tutor for SPLA training modules.
-You have access to multiple SPLA training documents including:
-- SPLA031: Sexual & Reproductive Health (SRH) Training Manual (2024)
-- Any additional SPLA documents that have been ingested
+SRH_SYSTEM_PROMPT = """You are a professional, compassionate tutor for SPLA training modules.
+You have access to the SPLA031: Sexual & Reproductive Health (SRH) Training Manual (2024).
 
-Answer questions from ANY of the ingested SPLA training documents.
-Always cite which document and page number you are referencing.
-If asked about something not covered in any document, politely say it is outside
-the scope of the available training materials.
+Answer questions ONLY from the SRH training document.
+Always cite the document and page number you are referencing.
+If asked about something not covered in the SRH document, politely say it is outside
+the scope of the available SRH training materials.
 
 Teaching style:
 - Ground explanations in the provided document excerpts
 - Use clear, clinical, respectful language
 - Explain concepts step by step
 - Be non-judgmental and inclusive
-- Always cite the source document and page e.g. "As the SPLA031 manual states on page 34..."
+- Always cite e.g. "As the SPLA031 manual states on page 34..."
 
 You have 4 modes:
 1. EXPLAIN  → explain using document excerpts + your own clear examples
@@ -309,6 +344,36 @@ You have 4 modes:
 After explaining, ask if they want a quiz or exercise to test understanding.
 Keep responses concise.
 """
+
+CDL_SYSTEM_PROMPT = """You are a professional, knowledgeable tutor for SPLA training modules.
+You have access to the Chronic Disease & Lifestyle (CDL) training document.
+
+Answer questions ONLY from the CDL training document.
+Always cite the document and page number you are referencing.
+If asked about something not covered in the CDL document, politely say it is outside
+the scope of the available CDL training materials.
+
+Teaching style:
+- Ground explanations in the provided document excerpts
+- Use clear, clinical, respectful language
+- Explain concepts step by step
+- Be evidence-based and practical
+- Always cite e.g. "As the CDL manual states on page 12..."
+
+You have 4 modes:
+1. EXPLAIN  → explain using document excerpts + your own clear examples
+2. QUIZ     → give 1 exam-style question, wait for answer before revealing it
+3. EXERCISE → case-study or scenario-based task
+4. REVIEW   → give constructive feedback on the trainee's written answer
+
+After explaining, ask if they want a quiz or exercise to test understanding.
+Keep responses concise.
+"""
+
+MODULE_PROMPTS = {
+    "srh": SRH_SYSTEM_PROMPT,
+    "cdl": CDL_SYSTEM_PROMPT,
+}
 
 # ══════════════════════════════════════════════════════════════
 #  PYDANTIC MODELS
@@ -325,6 +390,7 @@ class SignInRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    module: str = "srh"   # "srh" or "cdl" — sent by the frontend
 
 # ══════════════════════════════════════════════════════════════
 #  AUTH ROUTES
@@ -408,15 +474,21 @@ def get_me(current_user=Depends(get_current_user)):
 def chat(body: ChatRequest, current_user=Depends(get_current_user)):
     user_id      = current_user.id
     user_message = body.message.strip()
+    module       = body.module if body.module in MODULE_SOURCES else "srh"
+
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        manual_context, sources = search_manual(user_message, n_results=3)
+        # ── Source filter: only search chunks from the active module's book ──
+        source_filter = MODULE_SOURCES.get(module) or None
+        manual_context, sources = search_manual(user_message, n_results=3,
+                                                source_filter=source_filter)
 
-        system_content = SYSTEM_PROMPT
+        # ── System prompt for this module ──
+        system_content = MODULE_PROMPTS.get(module, SRH_SYSTEM_PROMPT)
         if manual_context:
-            system_content += f"\n\nRelevant excerpts:\n{manual_context}"
+            system_content += f"\n\nRelevant excerpts from the document:\n{manual_context}"
         del manual_context
 
         history          = load_user_history(user_id, limit=8)
@@ -464,11 +536,46 @@ def get_stats(current_user=Depends(get_current_user)):
         return {"total_questions": 0}
 
 # ══════════════════════════════════════════════════════════════
+#  DEBUG ROUTE — list all ingested sources
+# ══════════════════════════════════════════════════════════════
+
+@app.get("/debug/sources")
+def list_sources():
+    """
+    Returns the distinct 'source' labels stored in the manual collection.
+    Use this to confirm the exact string to put in MODULE_SOURCES / .env.
+    """
+    if not collection_exists(MANUAL_COLLECTION):
+        return {"sources": [], "detail": "Manual collection not found."}
+    try:
+        # Scroll through a sample of points and collect unique source values
+        seen, offset = set(), None
+        while True:
+            result, next_offset = qdrant.scroll(
+                collection_name=MANUAL_COLLECTION,
+                limit=100,
+                offset=offset,
+                with_payload=["source"],
+                with_vectors=False,
+            )
+            for point in result:
+                src = point.payload.get("source", "")
+                if src:
+                    seen.add(src)
+            if next_offset is None:
+                break
+            offset = next_offset
+            if len(seen) > 50:   # safety cap
+                break
+        return {"sources": sorted(seen)}
+    except Exception as e:
+        return {"sources": [], "detail": str(e)}
+
+# ══════════════════════════════════════════════════════════════
 #  STARTUP
 # ══════════════════════════════════════════════════════════════
 
 def _prewarm():
-    """Load heavy models in background so first chat request is fast."""
     try:
         print("🔌 Pre-warming embedding model in background...")
         embed_one("warmup test")
@@ -483,11 +590,14 @@ def _prewarm():
 def startup():
     print("✅ SRH Tutor API starting — port is bound.")
     init_qdrant_chat_collection()
-    # Pre-warm models in background thread so port stays responsive
+    init_qdrant_manual_index()        # ← ensures source index exists
     t = threading.Thread(target=_prewarm, daemon=True)
     t.start()
     print(f"📁 Frontend: {STATIC_DIR}")
     print("⏳ Models loading in background...")
+    if not CDL_SOURCE:
+        print("⚠️  CDL_SOURCE env var is not set — CDL module will search all books.")
+        print("   Run GET /debug/sources to find the correct label, then set CDL_SOURCE.")
 
 if __name__ == "__main__":
     import uvicorn
