@@ -192,36 +192,41 @@ def get_current_user(authorization: str = Header(...)):
 #  MANUAL SEARCH
 # ══════════════════════════════════════════════════════════════
 
-def search_manual(query: str, n_results: int = 3, source_filter: str = None):
+def search_manual(query: str, n_per_source: int = 3, pool_size: int = 20):
     """
-    Search the manual collection.
-    If source_filter is provided, only chunks whose 'source' payload matches
-    that value are returned — preventing cross-book contamination.
+    Search the manual collection with source-balanced retrieval.
+
+    Pulls a larger pool of top hits from Qdrant, then keeps up to
+    n_per_source chunks from each distinct 'source' so every ingested
+    book contributes context (instead of one book dominating because
+    its embeddings happen to be closer to the query).
     """
     if not collection_exists(MANUAL_COLLECTION):
         raise HTTPException(status_code=503,
             detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
     try:
         query_vector = embed_one(query)
-
-        # Build optional source filter
-        query_filter = None
-        if source_filter:
-            query_filter = Filter(must=[
-                FieldCondition(key="source", match=MatchValue(value=source_filter))
-            ])
-
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector,
-            limit=n_results,
+            limit=pool_size,
             with_payload=True,
-            query_filter=query_filter      # ← only chunks from the right book
         )
         if not results.points:
             return "", []
-        parts, sources = [], []
+
+        per_source: dict = {}
         for hit in results.points:
+            src = hit.payload.get("source", "Manual")
+            bucket = per_source.setdefault(src, [])
+            if len(bucket) < n_per_source:
+                bucket.append(hit)
+
+        selected = [hit for hits in per_source.values() for hit in hits]
+        selected.sort(key=lambda h: h.score, reverse=True)
+
+        parts, sources = [], []
+        for hit in selected:
             src = hit.payload.get("source", "Manual")
             page = hit.payload["page"]
             parts.append(f"[{src}, Page {page}]:\n{hit.payload['text']}")
@@ -318,10 +323,12 @@ You have access to two training documents:
   • Chronic Disease & Lifestyle (CDL) training document
 
 Answer questions ONLY from the provided training documents.
-Always cite the document and page number you are referencing
-(e.g. "As the SPLA031 manual states on page 34..." or "As the CDL manual notes on page 12...").
-If asked about something not covered in either document, politely say it is outside
-the scope of the available training materials.
+
+CITATION RULES — read carefully:
+- Each retrieved excerpt is shown to you as `[<Source>, Page <N>]: <text>`. The source name in the bracket is the EXACT document the excerpt came from.
+- When you cite, your citation MUST name a source that actually appears in the excerpts I gave you this turn. Do NOT cite a manual whose name is not in the excerpts.
+- Quote the source name verbatim as it appears in the bracket (e.g. "the SPLA031 manual" or "the CDL notes 2022").
+- If the excerpts don't cover the question, say so plainly — do not invent a citation.
 
 Teaching style:
 - Ground explanations in the provided document excerpts
@@ -338,8 +345,9 @@ You have 4 modes:
 QUIZ MODE rules (use these whenever the student asks for a quiz, test, or to be quizzed):
 - The quiz has exactly 20 questions, asked ONE AT A TIME.
 - Mix question styles: multiple-choice (with options A–D), short-answer, and true/false.
-- Draw questions from the relevant training document(s); cite the source/page when revealing the answer.
-- If the student asked about a specific topic, scope all 20 questions to that topic. Otherwise mix topics across the manuals.
+- Cover BOTH manuals across the 20 questions — aim for a roughly even split between SRH (SPLA031) and CDL topics. Do NOT ask all 20 questions from a single manual.
+- If the student asked for a quiz on a SPECIFIC topic, scope all 20 questions to that topic and use whichever manual(s) cover it.
+- When you reveal each answer, cite the manual the question is actually drawn from — and that manual must appear in the excerpts for that turn.
 - Format every question as:
     **Question N of 20**
     <the question, with options A–D on separate lines if multiple-choice>
@@ -457,8 +465,8 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        # ── Search across both books (no source filter) ──
-        manual_context, sources = search_manual(user_message, n_results=3)
+        # ── Search across both books with source-balanced retrieval ──
+        manual_context, sources = search_manual(user_message)
 
         system_content = SYSTEM_PROMPT
         if manual_context:
