@@ -165,47 +165,6 @@
     padding: 12px 14px; font-size: 0.875rem; display: none;
   }
 
-  /* ══════════════════════════════
-     MODULE SELECTOR
-  ══════════════════════════════ */
-  .module-selector {
-    display: flex; gap: 10px;
-    padding: 12px 16px;
-    background: var(--white);
-    border-bottom: 1px solid var(--sand);
-    overflow-x: auto;
-  }
-  .module-selector::-webkit-scrollbar { display: none; }
-
-  .mod-pill {
-    display: flex; align-items: center; gap: 7px;
-    padding: 8px 16px;
-    border-radius: 100px;
-    border: 2px solid var(--sand-dk);
-    background: var(--cream);
-    cursor: pointer;
-    font-family: 'Outfit', sans-serif;
-    font-size: 0.8rem; font-weight: 600;
-    color: var(--muted);
-    white-space: nowrap;
-    transition: all 0.2s;
-    flex-shrink: 0;
-  }
-  .mod-pill.active-srh {
-    background: linear-gradient(135deg, var(--srh-lt), var(--srh-dk));
-    border-color: transparent; color: white;
-    box-shadow: 0 4px 14px rgba(192,57,75,0.3);
-  }
-  .mod-pill.active-cdl {
-    background: linear-gradient(135deg, var(--cdl-lt), var(--cdl-dk));
-    border-color: transparent; color: white;
-    box-shadow: 0 4px 14px rgba(26,107,92,0.3);
-  }
-  .mod-pill span.dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: currentColor; opacity: 0.7;
-    display: inline-block;
-  }
 
   /* ══════════════════════════════
      CHAT SCREEN
@@ -258,26 +217,6 @@
     scroll-behavior: smooth;
     min-height: 0;
   }
-
-  /* Quick commands */
-  .quick-commands {
-    display: flex; gap: 8px; flex-wrap: nowrap;
-    padding: 0 16px 10px;
-    overflow-x: auto;
-  }
-  .quick-commands::-webkit-scrollbar { display: none; }
-  .quick-cmd {
-    padding: 7px 14px;
-    background: var(--white);
-    border: 1.5px solid var(--sand-dk);
-    border-radius: 20px; cursor: pointer;
-    font-family: 'Outfit', sans-serif;
-    font-size: 0.78rem; font-weight: 500; color: var(--ink-lt);
-    transition: all 0.18s; white-space: nowrap; flex-shrink: 0;
-  }
-  .quick-cmd:hover { border-color: var(--mod); color: var(--mod); background: var(--white); }
-  .quick-cmd.cdl { border-color: rgba(26,107,92,0.3); color: var(--cdl-dk); }
-  .quick-cmd.cdl:hover { border-color: var(--cdl); background: #f0faf8; }
 
   /* Bubbles */
   .bubble-wrap { display: flex; flex-direction: column; max-width: 88%; }
@@ -450,13 +389,11 @@
     .brand h1        { font-size: 1.6rem; }
     .auth-card       { padding: 24px 18px; }
     .bubble-wrap     { max-width: 94%; }
-    .mod-pill        { font-size: 0.72rem; padding: 6px 12px; }
     .topbar-info h2  { font-size: 0.9rem; }
     .input-area      { padding: 8px 12px 14px; }
     #user-input      { padding: 11px 13px; font-size: 0.88rem; }
     .send-btn        { width: 44px; height: 44px; }
     #messages        { padding: 14px 12px; }
-    .quick-cmd       { font-size: 0.72rem; padding: 6px 11px; }
     .welcome-card    { padding: 18px 16px; }
     .welcome-card h3 { font-size: 1.05rem; }
     .input-hint      { display: none; }
@@ -490,15 +427,11 @@
     .bubble-wrap  { max-width: 82%; }
     #messages     { padding: 14px 24px; gap: 10px; }
     .bubble       { font-size: 0.88rem; padding: 10px 14px; line-height: 1.5; }
-    .module-selector { padding: 10px 28px; gap: 12px; }
-    .mod-pill        { font-size: 0.9rem; padding: 8px 20px; }
     .topbar       { padding: 10px 28px; }
     .topbar-info h2 { font-size: 1.15rem; }
     .input-area   { padding: 10px 28px 14px; }
     #user-input   { font-size: 1.02rem; min-height: 56px; }
     .send-btn     { width: 56px; height: 56px; }
-    .quick-commands { padding: 0 28px 14px; gap: 10px; flex-wrap: wrap; }
-    .quick-cmd      { font-size: 0.86rem; padding: 8px 16px; }
     .welcome-card   { max-width: 560px; padding: 32px 28px; }
     .welcome-card h3 { font-size: 1.35rem; }
   }
@@ -513,24 +446,17 @@
     .bubble-wrap  { max-width: 78%; }
     #messages     { padding: 16px 40px; gap: 10px; }
     .bubble       { font-size: 0.9rem; padding: 11px 15px; line-height: 1.55; }
-    .module-selector { padding: 12px 44px; gap: 14px; }
-    .mod-pill        { font-size: 0.92rem; padding: 9px 22px; }
     .topbar         { padding: 12px 44px; }
     .topbar-info h2 { font-size: 1.2rem; }
     .topbar-icon    { width: 42px; height: 42px; font-size: 20px; }
     .input-area     { padding: 12px 44px 16px; }
     #user-input     { font-size: 1.05rem; border-radius: 16px; min-height: 58px; padding: 16px 20px; }
     .send-btn       { width: 58px; height: 58px; border-radius: 16px; }
-    .quick-commands { padding: 0 44px 16px; gap: 10px; flex-wrap: wrap; }
-    .quick-cmd      { font-size: 0.88rem; padding: 9px 18px; }
     .welcome-card   { max-width: 640px; padding: 40px 36px; }
     .welcome-card h3 { font-size: 1.5rem; }
     .welcome-card p  { font-size: 0.98rem; }
     .icon-btn       { width: 40px; height: 40px; font-size: 16px; }
     .btn-primary:hover  { box-shadow: 0 10px 28px rgba(192,57,75,0.38); }
-    .mod-pill:hover:not(.active-srh):not(.active-cdl) {
-      border-color: var(--mod); color: var(--mod-dk); background: var(--white);
-    }
   }
 
   @media (min-width: 1280px) {
@@ -540,8 +466,6 @@
     .bubble       { font-size: 0.92rem; padding: 12px 16px; line-height: 1.55; }
     .topbar       { padding: 12px 64px; }
     .input-area   { padding: 12px 64px 18px; }
-    .quick-commands { padding: 0 64px 12px; }
-    .module-selector { padding: 12px 64px; }
     .welcome-card   { max-width: 700px; padding: 44px 40px; }
   }
 
@@ -552,16 +476,12 @@
     .bubble       { font-size: 0.94rem; padding: 12px 16px; line-height: 1.55; }
     .topbar       { padding: 14px 96px; }
     .input-area   { padding: 14px 96px 20px; }
-    .quick-commands { padding: 0 96px 14px; }
-    .module-selector { padding: 14px 96px; }
   }
 
   @media (hover: none) {
     .btn-primary:hover  { transform: none; box-shadow: 0 6px 20px rgba(192,57,75,0.28); }
     .send-btn:hover     { transform: none; }
     .icon-btn:hover     { border-color: var(--sand-dk); color: var(--muted); background: var(--cream); }
-    .quick-cmd:hover    { border-color: var(--sand-dk); color: var(--ink-lt); background: var(--white); }
-    .mod-pill:hover     { border-color: var(--sand-dk); color: var(--muted); background: var(--cream); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -656,16 +576,6 @@
     </div>
   </div>
 
-  <!-- Module selector -->
-  <div class="module-selector">
-    <button class="mod-pill active-srh" id="pill-srh" onclick="switchModule('srh')">
-      <span class="dot"></span> SPLA031 · Sexual &amp; Reproductive Health
-    </button>
-    <button class="mod-pill" id="pill-cdl" onclick="switchModule('cdl')">
-      <span class="dot"></span> Chronic Disease &amp; Lifestyle
-    </button>
-  </div>
-
   <!-- Messages -->
   <div id="messages">
     <div class="welcome-card" id="welcome-card">
@@ -675,9 +585,6 @@
       <p id="welcome-text">Ask me anything from your SRH training manual — anatomy, contraception, STIs, pregnancy, and more.</p>
     </div>
   </div>
-
-  <!-- Quick commands -->
-  <div class="quick-commands" id="quick-commands"></div>
 
   <!-- Input -->
   <div class="input-area">
@@ -769,28 +676,12 @@ function switchModule(mod) {
 
   document.body.classList.toggle('cdl-mode', mod === 'cdl');
 
-  document.getElementById('pill-srh').className = 'mod-pill' + (mod === 'srh' ? ' active-srh' : '');
-  document.getElementById('pill-cdl').className = 'mod-pill' + (mod === 'cdl' ? ' active-cdl' : '');
-
   document.getElementById('topbar-icon').textContent  = cfg.icon;
   document.getElementById('topbar-title').textContent = cfg.title;
   document.getElementById('user-input').placeholder   = cfg.placeholder;
 
-  renderQuickCommands(mod);
   restoreChatState(mod);
   showToast(`Switched to ${cfg.title}`);
-}
-
-function renderQuickCommands(mod) {
-  const container = document.getElementById('quick-commands');
-  container.innerHTML = '';
-  MODULES[mod].commands.forEach(cmd => {
-    const btn = document.createElement('button');
-    btn.className = `quick-cmd${mod === 'cdl' ? ' cdl' : ''}`;
-    btn.textContent = cmd.label;
-    btn.onclick = () => quickSend(cmd.text);
-    container.appendChild(btn);
-  });
 }
 
 // ══════════════════════════════════════════
@@ -1093,7 +984,6 @@ async function clearHistory() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-renderQuickCommands(activeModule);
 if (activeModule === 'cdl') document.body.classList.add('cdl-mode');
 
 (async function init() {
