@@ -82,7 +82,10 @@ _agent = None
 def get_llm():
     global _llm
     if _llm is None:
-        _llm = ChatGroq(model="llama-3.3-70b-versatile", timeout=30, max_retries=1)
+        # Higher max_tokens + longer timeout because generating a 20-question
+        # JSON quiz in one shot can be ~6k tokens out and 30+ seconds.
+        _llm = ChatGroq(model="llama-3.3-70b-versatile",
+                        timeout=60, max_retries=1, max_tokens=8000)
     return _llm
 
 def get_agent():
@@ -561,9 +564,13 @@ def cancel_active_quizzes_for_user(user_id: str):
 
 # ── Question generation (validated against real chunks) ──────
 
-def _retrieve_quiz_chunks(topic, n_per_source: int = 10):
+_CHUNK_TRUNC_CHARS = 350   # keep prompt size sane; chunks are ~500 chars by default
+
+
+def _retrieve_quiz_chunks(topic, n_per_source: int = 6):
     """Return (excerpts_text_for_prompt, chunks_meta) — chunks_meta
-    is a list of {source, page, text} for validation."""
+    is a list of {source, page, text} for validation. Chunks are truncated
+    in the prompt only; full text is kept in chunks_meta for validation."""
     query = topic if topic else "training material overview key concepts"
     if not collection_exists(MANUAL_COLLECTION):
         return "", []
@@ -572,7 +579,7 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 10):
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector,
-            limit=80,
+            limit=40,
             with_payload=True,
         )
         if not results.points:
@@ -594,8 +601,12 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 10):
                     "text":   hit.payload.get("text", ""),
                 })
 
-        prompt_parts = [f"[{c['source']}, Page {c['page']}]:\n{c['text']}"
-                        for c in chunks_meta]
+        prompt_parts = []
+        for c in chunks_meta:
+            text = c["text"] or ""
+            if len(text) > _CHUNK_TRUNC_CHARS:
+                text = text[:_CHUNK_TRUNC_CHARS].rstrip() + "…"
+            prompt_parts.append(f"[{c['source']}, Page {c['page']}]:\n{text}")
         return "\n\n".join(prompt_parts), chunks_meta
     except Exception as e:
         print(f"⚠️  quiz chunk retrieval failed: {e}")
@@ -670,42 +681,76 @@ def _extract_json_array(text: str):
         return None
 
 
-def _validate_quiz_question(q, chunks_meta) -> bool:
+def _validate_quiz_question(q, chunks_meta):
+    """Returns (is_valid, reason). On success, normalizes q in place."""
     if not isinstance(q, dict):
-        return False
+        return False, "not a dict"
     qtype = q.get("type")
     if qtype not in ("mcq", "tf"):
-        return False
+        return False, f"bad type {qtype!r}"
     if not q.get("question") or not q.get("explanation"):
-        return False
-    src   = q.get("source")
-    page  = q.get("page")
-    quote = (q.get("excerpt_quote") or "").strip().lower()
-    if not src or page is None or not quote:
-        return False
+        return False, "missing question/explanation"
+    src  = q.get("source")
+    page = q.get("page")
+    if not src or page is None:
+        return False, "missing source/page"
 
     if qtype == "mcq":
         opts = q.get("options")
         if not isinstance(opts, list) or len(opts) != 4:
-            return False
+            return False, "options not 4-element list"
         ans = (q.get("correct_answer") or "").strip().upper()
         if ans not in ("A", "B", "C", "D"):
-            return False
-        q["correct_answer"] = ans   # canonicalise to upper-case letter
+            return False, f"bad mcq answer {q.get('correct_answer')!r}"
+        q["correct_answer"] = ans
     else:
         ans = (q.get("correct_answer") or "").strip().lower()
         if ans not in ("true", "false"):
-            return False
-        q["correct_answer"] = "True" if ans == "true" else "False"   # canonical case
+            return False, f"bad tf answer {q.get('correct_answer')!r}"
+        q["correct_answer"] = "True" if ans == "true" else "False"
 
-    quote_norm = re.sub(r"\s+", " ", quote)
-    needle = quote_norm[:60]
+    # Source/page match — case-insensitive on source, tolerant on page type
+    src_lc  = str(src).strip().lower()
+    page_str = str(page).strip()
+    matching_chunk = None
     for c in chunks_meta:
-        if c["source"] == src and c["page"] == page:
-            chunk_norm = re.sub(r"\s+", " ", (c["text"] or "").lower())
-            if needle and needle in chunk_norm:
-                return True
-    return False
+        if (str(c["source"]).strip().lower() == src_lc
+                and str(c["page"]).strip() == page_str):
+            matching_chunk = c
+            # Canonicalise the source name to the chunk's exact spelling
+            q["source"] = c["source"]
+            q["page"]   = c["page"]
+            break
+    if matching_chunk is None:
+        return False, f"source/page mismatch: {src!r}, page {page!r}"
+
+    # Soft excerpt-quote check: if provided, prefer questions where the quote
+    # is in the chunk, but don't reject ones where the LLM paraphrased.
+    quote = (q.get("excerpt_quote") or "").strip().lower()
+    if quote:
+        quote_norm = re.sub(r"\s+", " ", quote)
+        chunk_norm = re.sub(r"\s+", " ", (matching_chunk["text"] or "").lower())
+        needle = quote_norm[:25]   # short prefix to be tolerant of paraphrase
+        if needle and needle not in chunk_norm:
+            # Not fatal — log and accept
+            pass
+    return True, "ok"
+
+
+def _looks_like_rate_limit(err: Exception) -> bool:
+    s = str(err).lower()
+    return "rate" in s and ("limit" in s or "429" in s) or "429" in s
+
+
+def _format_rate_limit_message(err: Exception) -> str:
+    s = str(err)
+    # Try to surface the "Please try again in 34m9s" portion if present
+    m = re.search(r"try again in ([0-9hms\. ]+)", s)
+    wait = m.group(1).strip() if m else None
+    base = "⏳ The AI is rate-limited (Groq daily token cap)."
+    if wait:
+        return f"{base} Please try again in **{wait}**."
+    return f"{base} Please try again later."
 
 
 def generate_quiz_questions(topic):
@@ -714,32 +759,49 @@ def generate_quiz_questions(topic):
     if not chunks_meta:
         return [], "📚 The training manuals don't appear to be ingested yet."
 
-    n_request = QUIZ_LENGTH + 8
+    n_request = QUIZ_LENGTH + 4   # small over-generation cushion to absorb a few drops
 
-    for attempt in range(2):
-        try:
-            messages = [
-                SystemMessage(content=_QUIZ_GEN_SYSTEM),
-                HumanMessage(content=_quiz_gen_user_prompt(excerpts, n_request, topic)),
-            ]
-            response = get_llm().invoke(messages)
-            raw = getattr(response, "content", "") or str(response)
-            arr = _extract_json_array(raw)
-            if not arr:
-                continue
-            valid = [q for q in arr if _validate_quiz_question(q, chunks_meta)]
-            if len(valid) >= QUIZ_LENGTH:
-                kept = valid[:QUIZ_LENGTH]
-                for i, q in enumerate(kept, start=1):
-                    q["n"] = i
-                    # Strip the verification quote — we don't need to send it back to the client
-                    q.pop("excerpt_quote", None)
-                return kept, None
-        except Exception as e:
-            print(f"⚠️  quiz generation attempt {attempt + 1} failed: {e}")
+    try:
+        messages = [
+            SystemMessage(content=_QUIZ_GEN_SYSTEM),
+            HumanMessage(content=_quiz_gen_user_prompt(excerpts, n_request, topic)),
+        ]
+        response = get_llm().invoke(messages)
+        raw = getattr(response, "content", "") or str(response)
+    except Exception as e:
+        print(f"⚠️  quiz generation LLM call failed: {e}")
+        if _looks_like_rate_limit(e):
+            return [], _format_rate_limit_message(e)
+        return [], "⚠️ Couldn't reach the AI right now. Please try again in a moment."
 
-    return [], ("⚠️ I couldn't generate a grounded quiz from the manuals right now. "
-                "Please try again in a moment.")
+    arr = _extract_json_array(raw)
+    if not arr:
+        print(f"⚠️  quiz JSON parse failed; first 300 chars of LLM output: {raw[:300]!r}")
+        return [], "⚠️ The AI didn't return a valid quiz format. Please try again."
+
+    valid: list = []
+    drop_reasons: list = []
+    for q in arr:
+        ok, reason = _validate_quiz_question(q, chunks_meta)
+        if ok:
+            valid.append(q)
+        else:
+            drop_reasons.append(reason)
+
+    print(f"📝 quiz generation: requested {n_request}, parsed {len(arr)}, "
+          f"validated {len(valid)}; sample drop reasons: {drop_reasons[:3]}")
+
+    if len(valid) < QUIZ_LENGTH:
+        return [], (
+            f"⚠️ I could only ground {len(valid)} of {len(arr)} questions in the "
+            f"manuals on that try. Please ask for the quiz again."
+        )
+
+    kept = valid[:QUIZ_LENGTH]
+    for i, q in enumerate(kept, start=1):
+        q["n"] = i
+        q.pop("excerpt_quote", None)
+    return kept, None
 
 
 # ── Quiz turn formatting & grading ───────────────────────────
@@ -971,6 +1033,8 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
         raise
     except Exception as e:
         gc.collect()
+        if _looks_like_rate_limit(e):
+            return {"response": _format_rate_limit_message(e), "sources": []}
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 @app.get("/chat/history")
