@@ -640,70 +640,62 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
 
 _QUIZ_GEN_SYSTEM = """You generate quiz questions strictly grounded in provided document excerpts.
 
+SCOPE — you may ONLY generate questions on these topics:
+
+SRH (SPLA031 RSH notes 2024):
+  - Reproductive anatomy and physiology (male/female reproductive organs, menstrual cycle, fertilisation)
+  - Contraception (methods, mechanisms, effectiveness, side effects)
+  - STIs (transmission routes, symptoms, prevention, treatment)
+  - HIV/AIDS (transmission, prevention, PMTCT, ART)
+  - Adolescent sexual and reproductive health
+  - Gender-based violence, consent, rights
+  - Pregnancy (signs, complications, antenatal care)
+
+CDL (CDL notes 2022, CDL Notes Slides Lect 9-20, Chronic Diseases of Lifestyle overview):
+  - Definitions and characteristics of NCDs (non-communicable diseases)
+  - Burden of disease: global and African mortality/morbidity statistics
+  - Demographic, epidemiological, and nutrition transition
+  - Social determinants of health
+  - Risk factors: tobacco, alcohol, poor diet, physical inactivity, obesity
+  - Modifiable vs non-modifiable risk factors
+  - Cardiovascular disease, diabetes, cancer, chronic respiratory disease
+  - Prevention and control strategies for NCDs
+
+STRICTLY FORBIDDEN — any question about:
+  - How to run a training session, workshop, or course
+  - Facilitator or trainer instructions
+  - Training methodology, approaches, or techniques
+  - Certificates, logistics, venue, transport, timetables
+  - Document structure, page references, manual organisation
+  - How information is presented in the manual
+  - Lists, flipcharts, or any training materials/tools
+
+If an excerpt is about training methodology rather than clinical content, SKIP IT and use a different excerpt.
+
 Rules:
-- Output VALID JSON only — a single array of question objects. No prose, no code fences, no commentary.
+- Output VALID JSON only — a single array of question objects. No prose, no code fences.
 - Each question must be answerable from ONE specific excerpt provided.
-- The "source" and "page" fields MUST exactly match the [Source, Page N] header of the excerpt the question is drawn from.
-- The "excerpt_quote" must be a verbatim quote (≥10 words) from that excerpt.
-- Cover ALL modules — distribute questions evenly across ALL sources present in the excerpts.
-  The course modules and their documents are:
-    • SPLA031 RSH notes 2024        → Sexual & Reproductive Health
-    • CDL notes 2022                → Chronic Diseases of Lifestyle (core notes)
-    • CDL Notes Slides Lect 9-20   → Chronic Diseases of Lifestyle (lectures 9–20)
-    • Chronic Diseases of Lifestyle overview → CDL overview/intro
-  Every quiz must draw from more than one module where excerpts from multiple modules are available.
-- Question types: multiple-choice ("mcq") with 4 options A–D, OR true/false ("tf"). No short-answer or open-ended questions.
-- Test substantive physiological, epidemiological, and clinical knowledge — NOT the document's structure.
-ABSOLUTE RULES — violations will cause the question to be discarded:
-1. Every question MUST test a physiological, clinical, epidemiological, or health concept.
-2. NEVER ask about document structure, facilitator instructions, certificates, logistics,
-   transport, rehearsals, venue setup, acknowledgements, or any administrative process.
-3. NEVER ask "according to page N..." or "does the manual state that..."
-4. A correct answer must be unambiguously correct — if two options could plausibly mean
-   the same thing, rewrite the question.
+- "source" and "page" MUST exactly match the [Source, Page N] header of the excerpt used.
+- Question types: "mcq" (4 options A–D) or "tf" (true/false) only.
+- Each MCQ must have exactly one unambiguously correct answer.
+- Distractors must be plausible but clearly wrong based on the excerpt.
+- "explanation" cites the source naturally in 1–2 sentences.
 
-BAD (will be discarded): "What is the purpose of rehearsing sessions?"
-BAD (will be discarded): "Are certificates appreciated by trainees?"
-GOOD: "Which contraceptive method works by preventing ovulation?"
-GOOD: "What is the leading cause of NCD mortality globally according to CDL notes?"
-- Topic coverage guidance per module:
-    SRH (SPLA031):
-      • Reproductive anatomy and physiology
-      • Contraception methods and mechanisms
-      • STIs: transmission, symptoms, prevention
-      • Adolescent sexual health
-      • Gender, rights, and consent
-    CDL (all CDL sources):
-      • Definitions and characteristics of chronic NCDs
-      • Global and African burden of disease (mortality/morbidity statistics)
-      • Demographic, epidemiological and nutrition transition
-      • Social determinants of health (structural/distal vs proximal/individual factors)
-      • Risk factors: diet & nutrition, physical inactivity, tobacco use
-      • Modifiable vs non-modifiable risk factors
-      • Impact of NCDs on individuals, families, workforce, and health systems
-      • Prevention and control strategies
-- Each MCQ must have exactly one correct option. "correct_answer" is the letter only: "A", "B", "C", or "D".
-- For tf, "correct_answer" is "True" or "False".
-- Distractors must be plausible but clearly incorrect based on the excerpt. Avoid obviously silly distractors.
-- "explanation" is 1–2 sentences citing the source naturally (e.g. "The CDL notes 2022 state that...").
-
-Output schema — a JSON array, nothing else:
+Output schema — JSON array, nothing else:
 [
   {
-    "type": "mcq" | "tf",
+    "type": "mcq",
     "question": "...",
     "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-    "correct_answer": "A" | "B" | "C" | "D" | "True" | "False",
+    "correct_answer": "A",
     "explanation": "...",
-    "source": "exact source name from the excerpt bracket",
+    "source": "exact source name",
     "page": <integer>,
-    "excerpt_quote": "verbatim quote of ≥10 words from the excerpt this question is based on"
+    "excerpt_quote": "verbatim quote of ≥10 words from the excerpt"
   }
 ]
-
-For true/false questions, omit the "options" field entirely.
+For true/false, omit "options".
 """
-
 
 def _quiz_gen_user_prompt(excerpts: str, n: int, topic) -> str:
     topic_clause = (
@@ -759,9 +751,22 @@ def _extract_json_array(text: str):
 
 
 _ADMIN_QUESTION_KEYWORDS = [
-    "rehearsal", "rehearse", "certificate", "housekeeping", "venue",
-    "transport", "logistics", "facilitator", "timetable", "how to use",
+    # training methodology
+    "training approach", "training method", "training technique",
+    "training should", "training in asrh", "training session",
+    "recommended approach to training", "purpose of training",
+    "training style", "training strategy",
+    # facilitation/logistics
+    "rehearsal", "rehearse", "facilitator", "housekeeping",
+    "venue", "certificate", "transport", "logistics",
+    "timetable", "opening ceremony", "lists displayed",
+    "purpose of keeping", "introduction of trainees",
+    "health education materials", "how to use",
     "purpose of this manual", "acknowledgement",
+    # presentation/document structure
+    "presenting information", "practical methods and reflection",
+    "emphasizing practical", "according to page",
+    "does the manual", "the manual state",
 ]
 
 def _is_admin_question(q: dict) -> bool:
