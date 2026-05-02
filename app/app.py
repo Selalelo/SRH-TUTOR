@@ -576,9 +576,6 @@ _CHUNK_TRUNC_CHARS = 200   # keep prompt size sane; chunks are ~500 chars by def
 
 
 def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
-    """Return (excerpts_text_for_prompt, chunks_meta) — chunks_meta
-    is a list of {source, page, text} for validation. Chunks are truncated
-    in the prompt only; full text is kept in chunks_meta for validation."""
     query = topic if topic else "training material overview key concepts"
     if not collection_exists(MANUAL_COLLECTION):
         return "", []
@@ -587,14 +584,34 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector,
-            limit=40,
+            limit=60,                    # pull more so filtering has room
             with_payload=True,
         )
         if not results.points:
             return "", []
 
+        # ── Skip pages that are likely admin/navigation content ──
+        SKIP_PAGES = set(range(1, 20))   # adjust upper bound after checking your PDFs
+        ADMIN_KEYWORDS = [
+            "rehearsal", "rehearse", "housekeeping", "facilitator", "venue",
+            "certificate", "transport", "logistics", "timetable", "schedule",
+            "welcome", "introduction to the manual", "how to use this manual",
+            "acknowledgement", "foreword", "table of contents",
+        ]
+
+        def is_low_value(hit) -> bool:
+            page = hit.payload.get("page", 999)
+            text = (hit.payload.get("text") or "").lower()
+            if page in SKIP_PAGES:
+                return True
+            if any(kw in text for kw in ADMIN_KEYWORDS):
+                return True
+            return False
+
         per_source: dict = {}
         for hit in results.points:
+            if is_low_value(hit):
+                continue
             src = hit.payload.get("source", "Manual")
             bucket = per_source.setdefault(src, [])
             if len(bucket) < n_per_source:
@@ -637,10 +654,18 @@ Rules:
   Every quiz must draw from more than one module where excerpts from multiple modules are available.
 - Question types: multiple-choice ("mcq") with 4 options A–D, OR true/false ("tf"). No short-answer or open-ended questions.
 - Test substantive physiological, epidemiological, and clinical knowledge — NOT the document's structure.
-  Forbidden question patterns:
-    • "Does the manual have a section on X?"
-    • "According to page N, what heading appears?"
-    • Any question whose answer is purely navigational or administrative.
+ABSOLUTE RULES — violations will cause the question to be discarded:
+1. Every question MUST test a physiological, clinical, epidemiological, or health concept.
+2. NEVER ask about document structure, facilitator instructions, certificates, logistics,
+   transport, rehearsals, venue setup, acknowledgements, or any administrative process.
+3. NEVER ask "according to page N..." or "does the manual state that..."
+4. A correct answer must be unambiguously correct — if two options could plausibly mean
+   the same thing, rewrite the question.
+
+BAD (will be discarded): "What is the purpose of rehearsing sessions?"
+BAD (will be discarded): "Are certificates appreciated by trainees?"
+GOOD: "Which contraceptive method works by preventing ovulation?"
+GOOD: "What is the leading cause of NCD mortality globally according to CDL notes?"
 - Topic coverage guidance per module:
     SRH (SPLA031):
       • Reproductive anatomy and physiology
@@ -732,10 +757,24 @@ def _extract_json_array(text: str):
         return None
 
 
+
+_ADMIN_QUESTION_KEYWORDS = [
+    "rehearsal", "rehearse", "certificate", "housekeeping", "venue",
+    "transport", "logistics", "facilitator", "timetable", "how to use",
+    "purpose of this manual", "acknowledgement",
+]
+
+def _is_admin_question(q: dict) -> bool:
+    text = (q.get("question") or "").lower()
+    return any(kw in text for kw in _ADMIN_QUESTION_KEYWORDS)
+
+
 def _validate_quiz_question(q, chunks_meta):
     """Returns (is_valid, reason). On success, normalizes q in place."""
     if not isinstance(q, dict):
         return False, "not a dict"
+    if _is_admin_question(q):
+        return False, "administrative/navigational question"
     qtype = q.get("type")
     if qtype not in ("mcq", "tf"):
         return False, f"bad type {qtype!r}"
@@ -745,10 +784,8 @@ def _validate_quiz_question(q, chunks_meta):
     page = q.get("page")
     if not src or page is None:
         return False, "missing source/page"
-
     if qtype == "mcq":
         opts = q.get("options")
-        # LLM returns {"A": "...", "B": "..."} dict — normalise to list
         if isinstance(opts, dict):
             opts = [f"{k}) {v}" for k, v in sorted(opts.items()) if k in ("A","B","C","D")]
             q["options"] = opts
@@ -763,34 +800,26 @@ def _validate_quiz_question(q, chunks_meta):
         if ans not in ("true", "false"):
             return False, f"bad tf answer {q.get('correct_answer')!r}"
         q["correct_answer"] = "True" if ans == "true" else "False"
-
-    # Source/page match — case-insensitive on source, tolerant on page type
-    src_lc  = str(src).strip().lower()
+    src_lc   = str(src).strip().lower()
     page_str = str(page).strip()
     matching_chunk = None
     for c in chunks_meta:
         if (str(c["source"]).strip().lower() == src_lc
                 and str(c["page"]).strip() == page_str):
             matching_chunk = c
-            # Canonicalise the source name to the chunk's exact spelling
             q["source"] = c["source"]
             q["page"]   = c["page"]
             break
     if matching_chunk is None:
         return False, f"source/page mismatch: {src!r}, page {page!r}"
-
-    # Soft excerpt-quote check: if provided, prefer questions where the quote
-    # is in the chunk, but don't reject ones where the LLM paraphrased.
     quote = (q.get("excerpt_quote") or "").strip().lower()
     if quote:
         quote_norm = re.sub(r"\s+", " ", quote)
         chunk_norm = re.sub(r"\s+", " ", (matching_chunk["text"] or "").lower())
-        needle = quote_norm[:25]   # short prefix to be tolerant of paraphrase
+        needle = quote_norm[:25]
         if needle and needle not in chunk_norm:
-            # Not fatal — log and accept
             pass
     return True, "ok"
-
 
 def _looks_like_rate_limit(err: Exception) -> bool:
     s = str(err).lower()
