@@ -572,10 +572,10 @@ def cancel_active_quizzes_for_user(user_id: str):
 
 # ── Question generation (validated against real chunks) ──────
 
-_CHUNK_TRUNC_CHARS = 350   # keep prompt size sane; chunks are ~500 chars by default
+_CHUNK_TRUNC_CHARS = 200   # keep prompt size sane; chunks are ~500 chars by default
 
 
-def _retrieve_quiz_chunks(topic, n_per_source: int = 6):
+def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
     """Return (excerpts_text_for_prompt, chunks_meta) — chunks_meta
     is a list of {source, page, text} for validation. Chunks are truncated
     in the prompt only; full text is kept in chunks_meta for validation."""
@@ -667,7 +667,7 @@ Output schema — a JSON array, nothing else:
   {
     "type": "mcq" | "tf",
     "question": "...",
-    "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
+    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
     "correct_answer": "A" | "B" | "C" | "D" | "True" | "False",
     "explanation": "...",
     "source": "exact source name from the excerpt bracket",
@@ -748,6 +748,10 @@ def _validate_quiz_question(q, chunks_meta):
 
     if qtype == "mcq":
         opts = q.get("options")
+        # LLM returns {"A": "...", "B": "..."} dict — normalise to list
+        if isinstance(opts, dict):
+            opts = [f"{k}) {v}" for k, v in sorted(opts.items()) if k in ("A","B","C","D")]
+            q["options"] = opts
         if not isinstance(opts, list) or len(opts) != 4:
             return False, "options not 4-element list"
         ans = (q.get("correct_answer") or "").strip().upper()
@@ -810,7 +814,7 @@ def generate_quiz_questions(topic):
     if not chunks_meta:
         return [], "📚 The training manuals don't appear to be ingested yet."
 
-    n_request = QUIZ_LENGTH + 4   # small over-generation cushion to absorb a few drops
+    n_request = QUIZ_LENGTH + 2  # small over-generation cushion to absorb a few drops
 
     try:
         messages = [
