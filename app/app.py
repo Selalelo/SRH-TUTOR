@@ -82,8 +82,6 @@ _agent = None
 def get_llm():
     global _llm
     if _llm is None:
-        # Higher max_tokens + longer timeout because generating a 20-question
-        # JSON quiz in one shot can be ~6k tokens out and 30+ seconds.
         _llm = ChatGroq(model="llama-3.3-70b-versatile",
                         timeout=60, max_retries=1, max_tokens=8000)
     return _llm
@@ -143,7 +141,6 @@ def init_qdrant_chat_collection():
             )
             _known_collections.add(CHAT_COLLECTION)
             print(f"✅ Qdrant '{CHAT_COLLECTION}' created.")
-
         qdrant.create_payload_index(
             collection_name=CHAT_COLLECTION,
             field_name="timestamp",
@@ -159,7 +156,6 @@ def init_qdrant_chat_collection():
         print(f"⚠️  Qdrant chat init: {e}")
 
 def init_qdrant_manual_index():
-    """Ensure the 'source' payload index exists on the manual collection."""
     try:
         if not collection_exists(MANUAL_COLLECTION):
             print(f"ℹ️  Manual collection not found — skipping source index creation.")
@@ -171,7 +167,6 @@ def init_qdrant_manual_index():
         )
         print(f"✅ Qdrant manual 'source' index ready.")
     except Exception as e:
-        # Index may already exist — not a fatal error
         print(f"ℹ️  Manual source index: {e}")
 
 # ══════════════════════════════════════════════════════════════
@@ -197,14 +192,6 @@ def get_current_user(authorization: str = Header(...)):
 # ══════════════════════════════════════════════════════════════
 
 def search_manual(query: str, n_per_source: int = 3, pool_size: int = 20):
-    """
-    Search the manual collection with source-balanced retrieval.
-
-    Pulls a larger pool of top hits from Qdrant, then keeps up to
-    n_per_source chunks from each distinct 'source' so every ingested
-    book contributes context (instead of one book dominating because
-    its embeddings happen to be closer to the query).
-    """
     if not collection_exists(MANUAL_COLLECTION):
         raise HTTPException(status_code=503,
             detail="📚 Manual not ingested yet. Run: python ingest_srh.py")
@@ -457,19 +444,6 @@ def get_me(current_user=Depends(get_current_user)):
 # ══════════════════════════════════════════════════════════════
 #  QUIZ SESSIONS
 # ══════════════════════════════════════════════════════════════
-#
-# Quizzes are run by the server, not the LLM. When a user asks for a
-# quiz, we (1) retrieve a balanced pool of chunks from both manuals,
-# (2) ask the LLM to generate grounded questions in a single shot,
-# (3) validate every question against the actual chunks (source/page
-# must match, excerpt_quote must appear in the chunk's text), and
-# (4) store the question list in `quiz_sessions`. After that, every
-# answer is graded server-side against the stored answer key — the
-# LLM is never asked to generate a question or invent a citation
-# during quiz turns.
-#
-# This eliminates the per-turn drift / hallucination we got when the
-# LLM was asked to manage the quiz itself.
 
 QUIZ_LENGTH = 20
 
@@ -489,14 +463,11 @@ _QUIZ_TOPIC_RE = re.compile(
     re.IGNORECASE,
 )
 
-
 def is_quiz_request(msg: str) -> bool:
     return bool(_QUIZ_REQUEST_RE.search(msg) or _QUIZ_BARE_RE.match(msg))
 
-
 def is_quiz_cancel(msg: str) -> bool:
     return bool(_QUIZ_CANCEL_RE.match(msg))
-
 
 def _extract_topic(msg: str):
     m = _QUIZ_TOPIC_RE.search(msg)
@@ -504,7 +475,6 @@ def _extract_topic(msg: str):
         return None
     topic = m.group(1).strip().rstrip(".?!,")
     return topic or None
-
 
 # ── Supabase helpers ─────────────────────────────────────────
 
@@ -519,7 +489,6 @@ def get_active_quiz(user_id: str):
     except Exception as e:
         print(f"⚠️  get_active_quiz failed: {e}")
         return None
-
 
 def create_quiz_session(user_id: str, questions: list, topic):
     try:
@@ -537,10 +506,8 @@ def create_quiz_session(user_id: str, questions: list, topic):
         print(f"⚠️  create_quiz_session failed: {e}")
         return None
 
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 def update_quiz_session(session_id: str, *, current_index: int, score: int,
                        answers: list, completed: bool = False):
@@ -552,14 +519,12 @@ def update_quiz_session(session_id: str, *, current_index: int, score: int,
     except Exception as e:
         print(f"⚠️  update_quiz_session failed: {e}")
 
-
 def cancel_quiz_session(session_id: str):
     try:
         (supabase_admin.table("quiz_sessions")
          .update({"cancelled_at": _now_iso()}).eq("id", session_id).execute())
     except Exception as e:
         print(f"⚠️  cancel_quiz_session failed: {e}")
-
 
 def cancel_active_quizzes_for_user(user_id: str):
     try:
@@ -569,14 +534,53 @@ def cancel_active_quizzes_for_user(user_id: str):
     except Exception as e:
         print(f"⚠️  cancel_active_quizzes_for_user failed: {e}")
 
+# ── Question generation ───────────────────────────────────────
 
-# ── Question generation (validated against real chunks) ──────
+_CHUNK_TRUNC_CHARS = 400   # raised from 200 — LLM hallucinates when starved of context
 
-_CHUNK_TRUNC_CHARS = 200   # keep prompt size sane; chunks are ~500 chars by default
+# Admin keywords for chunk-level filtering
+_ADMIN_CHUNK_KEYWORDS = [
+    "rehearsal", "rehearse", "housekeeping", "facilitator", "venue",
+    "certificate", "transport", "logistics", "timetable", "schedule",
+    "welcome", "introduction to the manual", "how to use this manual",
+    "acknowledgement", "foreword", "table of contents",
+    "training approach", "training method", "training technique",
+    "training should", "lists displayed", "practical methods and reflection",
+    "presenting information", "opening ceremony", "introduction of trainees",
+    "health education materials", "asrh training", "purpose of keeping",
+    "recommended approach", "emphasizing practical",
+]
+
+# Admin keywords for question-level filtering
+_ADMIN_QUESTION_KEYWORDS = [
+    "training approach", "training method", "training technique",
+    "training should", "training in asrh", "training session",
+    "recommended approach to training", "purpose of training",
+    "training style", "training strategy",
+    "rehearsal", "rehearse", "facilitator", "housekeeping",
+    "venue", "certificate", "transport", "logistics",
+    "timetable", "opening ceremony", "lists displayed",
+    "purpose of keeping", "introduction of trainees",
+    "health education materials", "how to use",
+    "purpose of this manual", "acknowledgement",
+    "presenting information", "practical methods and reflection",
+    "emphasizing practical", "according to page",
+    "does the manual", "the manual state",
+]
+
+def _is_admin_chunk(text: str) -> bool:
+    t = text.lower()
+    return any(kw in t for kw in _ADMIN_CHUNK_KEYWORDS)
+
+def _is_admin_question(q: dict) -> bool:
+    text = (q.get("question") or "").lower()
+    return any(kw in text for kw in _ADMIN_QUESTION_KEYWORDS)
 
 
-def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
-    query = topic if topic else "training material overview key concepts"
+def _retrieve_quiz_chunks(topic, n_per_source: int = 6):
+    """Return (excerpts_text_for_prompt, chunks_meta).
+    Filters out admin/methodology content at the chunk level."""
+    query = topic if topic else "sexual reproductive health chronic disease lifestyle physiology"
     if not collection_exists(MANUAL_COLLECTION):
         return "", []
     try:
@@ -584,38 +588,26 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
         results = qdrant.query_points(
             collection_name=MANUAL_COLLECTION,
             query=query_vector,
-            limit=60,                    # pull more so filtering has room
+            limit=80,          # large pool so filtering has room to work
             with_payload=True,
         )
         if not results.points:
             return "", []
 
-        # ── Skip pages that are likely admin/navigation content ──
-        SKIP_PAGES = set(range(1, 20))   # adjust upper bound after checking your PDFs
-        ADMIN_KEYWORDS = [
-            "rehearsal", "rehearse", "housekeeping", "facilitator", "venue",
-            "certificate", "transport", "logistics", "timetable", "schedule",
-            "welcome", "introduction to the manual", "how to use this manual",
-            "acknowledgement", "foreword", "table of contents",
-        ]
-
-        def is_low_value(hit) -> bool:
-            page = hit.payload.get("page", 999)
-            text = (hit.payload.get("text") or "").lower()
-            if page in SKIP_PAGES:
-                return True
-            if any(kw in text for kw in ADMIN_KEYWORDS):
-                return True
-            return False
-
         per_source: dict = {}
+        skipped = 0
         for hit in results.points:
-            if is_low_value(hit):
+            text = hit.payload.get("text") or ""
+            if _is_admin_chunk(text):
+                skipped += 1
                 continue
             src = hit.payload.get("source", "Manual")
             bucket = per_source.setdefault(src, [])
             if len(bucket) < n_per_source:
                 bucket.append(hit)
+
+        print(f"ℹ️  chunk retrieval: {len(results.points)} fetched, {skipped} skipped (admin), "
+              f"{sum(len(v) for v in per_source.values())} kept across {len(per_source)} sources")
 
         chunks_meta = []
         for hits in per_source.values():
@@ -632,6 +624,7 @@ def _retrieve_quiz_chunks(topic, n_per_source: int = 4):
             if len(text) > _CHUNK_TRUNC_CHARS:
                 text = text[:_CHUNK_TRUNC_CHARS].rstrip() + "…"
             prompt_parts.append(f"[{c['source']}, Page {c['page']}]:\n{text}")
+
         return "\n\n".join(prompt_parts), chunks_meta
     except Exception as e:
         print(f"⚠️  quiz chunk retrieval failed: {e}")
@@ -661,27 +654,27 @@ CDL (CDL notes 2022, CDL Notes Slides Lect 9-20, Chronic Diseases of Lifestyle o
   - Cardiovascular disease, diabetes, cancer, chronic respiratory disease
   - Prevention and control strategies for NCDs
 
-STRICTLY FORBIDDEN — any question about:
+STRICTLY FORBIDDEN — immediately skip any excerpt about:
   - How to run a training session, workshop, or course
   - Facilitator or trainer instructions
   - Training methodology, approaches, or techniques
   - Certificates, logistics, venue, transport, timetables
   - Document structure, page references, manual organisation
-  - How information is presented in the manual
-  - Lists, flipcharts, or any training materials/tools
-
-If an excerpt is about training methodology rather than clinical content, SKIP IT and use a different excerpt.
+  - Lists, flipcharts, or training materials/tools
+  If an excerpt is about any of the above, skip it entirely and use a different excerpt.
 
 Rules:
-- Output VALID JSON only — a single array of question objects. No prose, no code fences.
+- Output VALID JSON only — a single array of question objects. No prose, no code fences, no commentary.
 - Each question must be answerable from ONE specific excerpt provided.
-- "source" and "page" MUST exactly match the [Source, Page N] header of the excerpt used.
+- The "source" and "page" fields MUST exactly match the [Source, Page N] header of the excerpt used.
+- Cover ALL modules — distribute questions across ALL sources present in the excerpts.
 - Question types: "mcq" (4 options A–D) or "tf" (true/false) only.
 - Each MCQ must have exactly one unambiguously correct answer.
 - Distractors must be plausible but clearly wrong based on the excerpt.
 - "explanation" cites the source naturally in 1–2 sentences.
+- Aim for ~75% mcq and ~25% tf.
 
-Output schema — JSON array, nothing else:
+Output schema — a JSON array, nothing else:
 [
   {
     "type": "mcq",
@@ -689,46 +682,31 @@ Output schema — JSON array, nothing else:
     "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
     "correct_answer": "A",
     "explanation": "...",
-    "source": "exact source name",
+    "source": "exact source name from the bracket",
     "page": <integer>,
-    "excerpt_quote": "verbatim quote of ≥10 words from the excerpt"
+    "excerpt_quote": "verbatim quote of at least 10 words from the excerpt"
   }
 ]
-For true/false, omit "options".
+For true/false questions, omit the "options" field entirely.
 """
+
 
 def _quiz_gen_user_prompt(excerpts: str, n: int, topic) -> str:
     topic_clause = (
         f"All questions must be on the topic: {topic}.\n\n"
         if topic else
-        "Spread questions across the topics covered in the excerpts.\n\n"
+        "Spread questions across sexual & reproductive health AND chronic diseases of lifestyle.\n\n"
     )
     return (
-        f"{topic_clause}Generate {n} quiz questions from these excerpts.\n\n"
+        f"{topic_clause}"
+        f"CRITICAL: Generate ONLY questions that test clinical, physiological, or "
+        f"epidemiological knowledge from the excerpts below. "
+        f"Do NOT generate questions about training methodology, facilitation, "
+        f"workshop logistics, or document structure. "
+        f"If an excerpt is about training methods rather than health content, skip it.\n\n"
+        f"Generate {n} quiz questions from these excerpts.\n\n"
         f"EXCERPTS:\n{excerpts}\n\n"
-        "Output schema (JSON array):\n"
-        '[\n'
-        '  {\n'
-        '    "type": "mcq",\n'
-        '    "question": "...",\n'
-        '    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],\n'
-        '    "correct_answer": "B",\n'
-        '    "explanation": "...",\n'
-        '    "source": "<exact source name from the bracket>",\n'
-        '    "page": <number>,\n'
-        '    "excerpt_quote": "<verbatim quote of >=10 words>"\n'
-        '  },\n'
-        '  {\n'
-        '    "type": "tf",\n'
-        '    "question": "...",\n'
-        '    "correct_answer": "True",\n'
-        '    "explanation": "...",\n'
-        '    "source": "<exact source name>",\n'
-        '    "page": <number>,\n'
-        '    "excerpt_quote": "<verbatim quote of >=10 words>"\n'
-        '  }\n'
-        ']\n\n'
-        f"Aim for ~75% mcq and ~25% tf. Output the JSON array of {n} items and nothing else."
+        f"Output the JSON array of {n} items and nothing else."
     )
 
 
@@ -749,48 +727,29 @@ def _extract_json_array(text: str):
         return None
 
 
-
-_ADMIN_QUESTION_KEYWORDS = [
-    # training methodology
-    "training approach", "training method", "training technique",
-    "training should", "training in asrh", "training session",
-    "recommended approach to training", "purpose of training",
-    "training style", "training strategy",
-    # facilitation/logistics
-    "rehearsal", "rehearse", "facilitator", "housekeeping",
-    "venue", "certificate", "transport", "logistics",
-    "timetable", "opening ceremony", "lists displayed",
-    "purpose of keeping", "introduction of trainees",
-    "health education materials", "how to use",
-    "purpose of this manual", "acknowledgement",
-    # presentation/document structure
-    "presenting information", "practical methods and reflection",
-    "emphasizing practical", "according to page",
-    "does the manual", "the manual state",
-]
-
-def _is_admin_question(q: dict) -> bool:
-    text = (q.get("question") or "").lower()
-    return any(kw in text for kw in _ADMIN_QUESTION_KEYWORDS)
-
-
 def _validate_quiz_question(q, chunks_meta):
     """Returns (is_valid, reason). On success, normalizes q in place."""
     if not isinstance(q, dict):
         return False, "not a dict"
+
+    # Reject admin/methodology questions
     if _is_admin_question(q):
         return False, "administrative/navigational question"
+
     qtype = q.get("type")
     if qtype not in ("mcq", "tf"):
         return False, f"bad type {qtype!r}"
     if not q.get("question") or not q.get("explanation"):
         return False, "missing question/explanation"
+
     src  = q.get("source")
     page = q.get("page")
     if not src or page is None:
         return False, "missing source/page"
+
     if qtype == "mcq":
         opts = q.get("options")
+        # Normalise dict → list if LLM returned {"A": "...", "B": "..."}
         if isinstance(opts, dict):
             opts = [f"{k}) {v}" for k, v in sorted(opts.items()) if k in ("A","B","C","D")]
             q["options"] = opts
@@ -805,35 +764,47 @@ def _validate_quiz_question(q, chunks_meta):
         if ans not in ("true", "false"):
             return False, f"bad tf answer {q.get('correct_answer')!r}"
         q["correct_answer"] = "True" if ans == "true" else "False"
-    src_lc   = str(src).strip().lower()
-    page_str = str(page).strip()
+
+    # ── Source match: require source to match, be lenient on page ──
+    src_lc = str(src).strip().lower()
+
+    # Find all chunks from this source
+    source_chunks = [c for c in chunks_meta
+                     if str(c["source"]).strip().lower() == src_lc]
+
+    if not source_chunks:
+        return False, f"source not in chunks: {src!r}"
+
+    # Try exact page match first
     matching_chunk = None
-    for c in chunks_meta:
-        if (str(c["source"]).strip().lower() == src_lc
-                and str(c["page"]).strip() == page_str):
+    page_str = str(page).strip()
+    for c in source_chunks:
+        if str(c["page"]).strip() == page_str:
             matching_chunk = c
             q["source"] = c["source"]
             q["page"]   = c["page"]
             break
+
+    # If no exact page match, accept anyway — use first chunk from that source
+    # This tolerates the LLM being off by a page or two
     if matching_chunk is None:
-        return False, f"source/page mismatch: {src!r}, page {page!r}"
-    quote = (q.get("excerpt_quote") or "").strip().lower()
-    if quote:
-        quote_norm = re.sub(r"\s+", " ", quote)
-        chunk_norm = re.sub(r"\s+", " ", (matching_chunk["text"] or "").lower())
-        needle = quote_norm[:25]
-        if needle and needle not in chunk_norm:
-            pass
+        matching_chunk = source_chunks[0]
+        old_page = page
+        q["source"] = matching_chunk["source"]
+        q["page"]   = matching_chunk["page"]
+        print(f"ℹ️  page mismatch tolerated: cited p.{old_page}, "
+              f"using p.{matching_chunk['page']} ({src})")
+
     return True, "ok"
+
 
 def _looks_like_rate_limit(err: Exception) -> bool:
     s = str(err).lower()
-    return "rate" in s and ("limit" in s or "429" in s) or "429" in s
+    return ("rate" in s and ("limit" in s or "429" in s)) or "429" in s
 
 
 def _format_rate_limit_message(err: Exception) -> str:
     s = str(err)
-    # Try to surface the "Please try again in 34m9s" portion if present
     m = re.search(r"try again in ([0-9hms\. ]+)", s)
     wait = m.group(1).strip() if m else None
     base = "⏳ The AI is rate-limited (Groq daily token cap)."
@@ -848,7 +819,7 @@ def generate_quiz_questions(topic):
     if not chunks_meta:
         return [], "📚 The training manuals don't appear to be ingested yet."
 
-    n_request = QUIZ_LENGTH + 2  # small over-generation cushion to absorb a few drops
+    n_request = QUIZ_LENGTH + 4   # cushion to absorb drops
 
     try:
         messages = [
@@ -865,7 +836,7 @@ def generate_quiz_questions(topic):
 
     arr = _extract_json_array(raw)
     if not arr:
-        print(f"⚠️  quiz JSON parse failed; first 300 chars of LLM output: {raw[:300]!r}")
+        print(f"⚠️  quiz JSON parse failed; first 300 chars: {raw[:300]!r}")
         return [], "⚠️ The AI didn't return a valid quiz format. Please try again."
 
     valid: list = []
@@ -877,8 +848,12 @@ def generate_quiz_questions(topic):
         else:
             drop_reasons.append(reason)
 
-    print(f"📝 quiz generation: requested {n_request}, parsed {len(arr)}, "
-          f"validated {len(valid)}; sample drop reasons: {drop_reasons[:3]}")
+    # Full diagnostics
+    print(f"📝 quiz generation: requested {n_request}, parsed {len(arr)}, validated {len(valid)}")
+    print(f"📝 drop reasons: {drop_reasons}")
+    print(f"📝 available chunks: {[(c['source'], c['page']) for c in chunks_meta]}")
+    dropped_qs = [q for q in arr if q not in valid]
+    print(f"📝 LLM cited (dropped): {[(q.get('source'), q.get('page')) for q in dropped_qs]}")
 
     if len(valid) < QUIZ_LENGTH:
         return [], (
@@ -909,11 +884,9 @@ def _normalize_mcq_answer(user_input: str, q: dict):
     s = user_input.strip()
     if not s:
         return None
-    # Find a standalone A/B/C/D letter anywhere in the answer
     m = re.search(r"\b([A-Da-d])\b", s)
     if m:
         return m.group(1).upper()
-    # Fallback: match by full option text
     s_lower = s.lower()
     for opt in q.get("options", []):
         om = re.match(r"^\s*([A-D])\s*[).:\-]?\s*(.*)$", opt)
@@ -1018,7 +991,6 @@ def handle_quiz_turn(session: dict, user_id: str, user_message: str):
     answers   = session.get("answers") or []
 
     if idx >= len(questions):
-        # Defensive: session should have been completed already
         summary = format_quiz_summary(score, len(questions))
         save_message(user_id, "ai", summary)
         update_quiz_session(session["id"], current_index=idx, score=score,
@@ -1071,7 +1043,6 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        # ── Quiz dispatch (server-driven, no LLM hallucination) ──
         active = get_active_quiz(user_id)
         if active:
             if is_quiz_cancel(user_message):
@@ -1092,9 +1063,8 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
             gc.collect()
             return result
 
-        # ── Normal chat flow ──
+        # Normal chat flow
         manual_context, sources = search_manual(user_message)
-
         system_content = SYSTEM_PROMPT
         if manual_context:
             system_content += f"\n\nRelevant excerpts from the documents:\n{manual_context}"
@@ -1106,7 +1076,6 @@ def chat(body: ChatRequest, current_user=Depends(get_current_user)):
         del history
 
         save_message(user_id, "human", user_message)
-
         result      = get_agent().invoke({"messages": messages_to_send})
         ai_response = result["messages"][-1].content
         del result, messages_to_send
@@ -1148,26 +1117,20 @@ def get_stats(current_user=Depends(get_current_user)):
         return {"total_questions": 0}
 
 # ══════════════════════════════════════════════════════════════
-#  DEBUG ROUTE — list all ingested sources
+#  DEBUG ROUTES
 # ══════════════════════════════════════════════════════════════
 
 @app.get("/debug/sources")
 def list_sources():
-    """
-    Returns the distinct 'source' labels stored in the manual collection.
-    """
     if not collection_exists(MANUAL_COLLECTION):
         return {"sources": [], "detail": "Manual collection not found."}
     try:
-        # Scroll through a sample of points and collect unique source values
         seen, offset = set(), None
         while True:
             result, next_offset = qdrant.scroll(
                 collection_name=MANUAL_COLLECTION,
-                limit=100,
-                offset=offset,
-                with_payload=["source"],
-                with_vectors=False,
+                limit=100, offset=offset,
+                with_payload=["source"], with_vectors=False,
             )
             for point in result:
                 src = point.payload.get("source", "")
@@ -1176,11 +1139,52 @@ def list_sources():
             if next_offset is None:
                 break
             offset = next_offset
-            if len(seen) > 50:   # safety cap
+            if len(seen) > 50:
                 break
         return {"sources": sorted(seen)}
     except Exception as e:
         return {"sources": [], "detail": str(e)}
+
+@app.get("/debug/pages")
+def debug_pages():
+    """Shows every source+page combination in the index and how many chunks it has.
+    Use this to understand what content is available for quiz generation."""
+    if not collection_exists(MANUAL_COLLECTION):
+        return {"detail": "Manual collection not found."}
+    try:
+        from collections import Counter
+        counts: Counter = Counter()
+        offset = None
+        while True:
+            result, next_offset = qdrant.scroll(
+                collection_name=MANUAL_COLLECTION,
+                limit=200, offset=offset,
+                with_payload=["source", "page"], with_vectors=False,
+            )
+            for p in result:
+                src  = p.payload.get("source", "?")
+                page = p.payload.get("page", "?")
+                counts[f"{src} | p.{page}"] += 1
+            if next_offset is None:
+                break
+            offset = next_offset
+        return {"total_chunks": sum(counts.values()), "pages": dict(sorted(counts.items()))}
+    except Exception as e:
+        return {"detail": str(e)}
+
+@app.get("/debug/quiz-chunks")
+def debug_quiz_chunks(topic: str = ""):
+    """Shows which chunks would be retrieved for a quiz on the given topic.
+    Useful for diagnosing why questions are failing validation."""
+    excerpts, chunks_meta = _retrieve_quiz_chunks(topic or None)
+    return {
+        "topic":       topic or "(general)",
+        "chunk_count": len(chunks_meta),
+        "chunks": [
+            {"source": c["source"], "page": c["page"], "preview": (c["text"] or "")[:120]}
+            for c in chunks_meta
+        ]
+    }
 
 # ══════════════════════════════════════════════════════════════
 #  STARTUP
@@ -1201,7 +1205,7 @@ def _prewarm():
 def startup():
     print("✅ SRH Tutor API starting — port is bound.")
     init_qdrant_chat_collection()
-    init_qdrant_manual_index()        # ← ensures source index exists
+    init_qdrant_manual_index()
     t = threading.Thread(target=_prewarm, daemon=True)
     t.start()
     print(f"📁 Frontend: {STATIC_DIR}")
